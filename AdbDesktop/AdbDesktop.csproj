@@ -1,0 +1,190 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>AdbDesktop</AssemblyName>
+    <RootNamespace>AdbDesktop</RootNamespace>
+    <ApplicationIcon></ApplicationIcon>
+    <PlatformTarget>x64</PlatformTarget>
+
+    <!--
+      The installer reads this off the built exe (GetVersionNumbersString), so it is the
+      single place a release is numbered.
+    -->
+    <Version>0.1.0</Version>
+    <Company>Snail</Company>
+    <Product>AdbDesktop</Product>
+
+    <!-- Keeps the release folder to what actually ships. -->
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Only NuGet dependency: the QR pairing flow in WifiPairViewModel. -->
+    <PackageReference Include="QRCoder" Version="1.8.0" />
+    <!-- WASAPI playback for the device audio link (same version AMPL uses). -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+
+  <!--
+    scrcpy_video.dll is built separately by `make` in "scrcpy video dll/scrcpy-video".
+    Copying it into Assets\ by hand is easy to forget, and a stale copy fails at
+    runtime with EntryPointNotFoundException rather than at build time. This picks up
+    a newer build automatically; it is skipped when the native build output is absent
+    (nothing else depends on the native toolchain being installed).
+  -->
+  <Target Name="SyncScrcpyVideoDll" BeforeTargets="BeforeBuild">
+    <PropertyGroup>
+      <ScrcpyVideoBuilt>$(MSBuildThisFileDirectory)..\scrcpy video dll\scrcpy-video\build\scrcpy_video.dll</ScrcpyVideoBuilt>
+    </PropertyGroup>
+    <Copy SourceFiles="$(ScrcpyVideoBuilt)"
+          DestinationFolder="$(MSBuildThisFileDirectory)Assets"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(ScrcpyVideoBuilt)')" />
+  </Target>
+
+  <ItemGroup>
+    <!--
+      adb.exe must stay byte-identical to the build shipped by AMPL and ASM.
+      All three apps talk to a single shared adb *server*; a version mismatch
+      makes adb kill and restart the server, which makes every app flake at once.
+    -->
+    <None Update="Assets\adb.exe">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Assets\AdbWinApi.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Assets\AdbWinUsbApi.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Assets\libwebp.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- libwebp.dll imports libsharpyuv.dll; without it the load fails outright. -->
+    <None Update="Assets\libsharpyuv.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+
+    <!--
+      Video mirroring: our scrcpy port plus its FFmpeg runtime. swresample is
+      not called directly but avcodec-62.dll imports it. scrcpy-server-v4.1 is
+      pushed to the device and must match SCRCPY_VERSION in the port's config.h.
+    -->
+    <None Update="Assets\scrcpy_video.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Assets\avcodec-62.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Assets\avutil-60.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Assets\swscale-9.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Assets\swresample-6.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- Audio link: the audio-only scrcpy port from AMPL. Unlike scrcpy_video it
+         links SDL3, which is why that 22.9MB DLL is here. -->
+    <None Update="Assets\scrcpy_audio.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Assets\SDL3.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Assets\scrcpy-server-v4.1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="THIRD_PARTY_LICENSES.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!--
+    ============================ release packaging ============================
+
+    A Release build produces both distributions into "AdbDesktop installer\output":
+
+      AdbDesktop_Setup.exe                  the Inno installer
+      AdbDesktop_<version>_portable.zip     unzip-and-run, no install
+
+    The two differ by one file. A portable copy carries a "portable.mode" marker next
+    to the exe, which AppPaths keys off to keep config, icons and desktop layouts in
+    the program folder instead of %AppData%\Snail\AdbDesktop. Nothing else changes, so
+    the same build output feeds both.
+
+    Debug builds skip all of this.
+  -->
+  <PropertyGroup>
+    <AdbDesktopInstallerDir>$(MSBuildThisFileDirectory)..\AdbDesktop installer\</AdbDesktopInstallerDir>
+    <AdbDesktopPackageDir>$(AdbDesktopInstallerDir)output\</AdbDesktopPackageDir>
+    <AdbDesktopPortableName>AdbDesktop_$(Version)_portable</AdbDesktopPortableName>
+
+    <!--
+      Inno is an external tool and deliberately optional: not having it installed
+      degrades a Release build to "portable only" with a warning, rather than failing
+      a build that is otherwise perfectly good.
+    -->
+    <InnoSetupExe Condition="'$(InnoSetupExe)' == ''">$([System.Environment]::GetFolderPath(SpecialFolder.ProgramFilesX86))\Inno Setup 6\ISCC.exe</InnoSetupExe>
+  </PropertyGroup>
+
+  <Target Name="PackagePortable" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+    <PropertyGroup>
+      <AdbDesktopPortableStage>$(AdbDesktopPackageDir)$(AdbDesktopPortableName)\</AdbDesktopPortableStage>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <!--
+        Everything the build produced, including Assets\. Re-globbed inside the target
+        so it sees files this build has just written, which an ItemGroup at project
+        scope would have evaluated too early to catch.
+      -->
+      <AdbDesktopPortableFiles Include="$(OutDir)**\*" Exclude="$(OutDir)**\*.pdb;$(OutDir)**\*.xml" />
+    </ItemGroup>
+
+    <!-- Cleared first, so a renamed or dropped file cannot linger in the zip. -->
+    <RemoveDir Directories="$(AdbDesktopPortableStage)" />
+    <MakeDir Directories="$(AdbDesktopPortableStage)" />
+
+    <Copy SourceFiles="@(AdbDesktopPortableFiles)"
+          DestinationFiles="@(AdbDesktopPortableFiles->'$(AdbDesktopPortableStage)%(RecursiveDir)%(Filename)%(Extension)')" />
+
+    <!-- The licence ships with the binaries, same as in the installer. -->
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)..\LICENSE.txt"
+          DestinationFolder="$(AdbDesktopPortableStage)"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\LICENSE.txt')" />
+
+    <!-- The marker that makes this copy portable. Its contents are irrelevant. -->
+    <WriteLinesToFile File="$(AdbDesktopPortableStage)portable.mode"
+                      Lines="AdbDesktop portable mode. Delete this file to store settings in %25AppData%25\Snail\AdbDesktop instead."
+                      Overwrite="true" />
+
+    <ZipDirectory SourceDirectory="$(AdbDesktopPortableStage)"
+                  DestinationFile="$(AdbDesktopPackageDir)$(AdbDesktopPortableName).zip"
+                  Overwrite="true" />
+
+    <!-- The staging folder is an intermediate; only the zip is a deliverable. -->
+    <RemoveDir Directories="$(AdbDesktopPortableStage)" />
+
+    <Message Importance="high" Text="AdbDesktop: portable package -> $(AdbDesktopPackageDir)$(AdbDesktopPortableName).zip" />
+  </Target>
+
+  <Target Name="PackageInstaller" AfterTargets="PackagePortable" Condition="'$(Configuration)' == 'Release'">
+    <Warning Condition="!Exists('$(InnoSetupExe)')"
+             Text="Inno Setup 6 was not found at '$(InnoSetupExe)', so AdbDesktop_Setup.exe was not built. Install Inno Setup 6, or pass -p:InnoSetupExe=&lt;path to ISCC.exe&gt;. The portable package was still produced." />
+
+    <Exec Condition="Exists('$(InnoSetupExe)')"
+          Command="&quot;$(InnoSetupExe)&quot; /Q &quot;$(AdbDesktopInstallerDir)AdbDesktop.iss&quot;"
+          WorkingDirectory="$(AdbDesktopInstallerDir)" />
+
+    <Message Condition="Exists('$(InnoSetupExe)')" Importance="high"
+             Text="AdbDesktop: installer -> $(AdbDesktopPackageDir)AdbDesktop_Setup.exe" />
+  </Target>
+
+</Project>

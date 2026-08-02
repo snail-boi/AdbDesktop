@@ -1,0 +1,185 @@
+<UserControl x:Class="AdbDesktop.DesktopSurface"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:AdbDesktop"
+             Background="Transparent"
+             ClipToBounds="True">
+
+    <UserControl.Resources>
+        <local:NullToVisibilityConverter x:Key="NullToVis"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <local:WallpaperFitConverter x:Key="FitToStretch"/>
+    </UserControl.Resources>
+
+    <Grid>
+        <!--
+          Wallpaper, per desktop. Sits under the icons and is deliberately not
+          hit-testable, so clicks still reach the surface and the icons above it.
+        -->
+        <Image Source="{Binding Wallpaper}"
+               Stretch="{Binding WallpaperFit, Converter={StaticResource FitToStretch}}"
+               HorizontalAlignment="Center" VerticalAlignment="Center"
+               IsHitTestVisible="False"
+               RenderOptions.BitmapScalingMode="HighQuality"/>
+
+    <ItemsControl x:Name="Host" ItemsSource="{Binding Icons}">
+
+        <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+                <Canvas Background="Transparent"/>
+            </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+
+        <!-- Canvas.Left/Top are bound on the container, so the item template stays
+             concerned only with what an icon looks like. -->
+        <ItemsControl.ItemContainerStyle>
+            <Style TargetType="ContentPresenter">
+                <Setter Property="Canvas.Left" Value="{Binding X}"/>
+                <Setter Property="Canvas.Top" Value="{Binding Y}"/>
+                <Setter Property="Panel.ZIndex" Value="{Binding ZIndex}"/>
+            </Style>
+        </ItemsControl.ItemContainerStyle>
+
+        <ItemsControl.ItemTemplate>
+            <DataTemplate>
+                <Border x:Name="Tile"
+                        Width="96" Height="110"
+                        Background="Transparent"
+                        CornerRadius="8"
+                        Cursor="Hand"
+                        Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}"
+                        MouseLeftButtonDown="Icon_MouseLeftButtonDown"
+                        MouseMove="Icon_MouseMove"
+                        MouseLeftButtonUp="Icon_MouseLeftButtonUp">
+
+                    <Border.ContextMenu>
+                        <!-- ContextMenu and MenuItem are templated dark in App.xaml. -->
+                        <ContextMenu>
+                            <MenuItem Header="Rename"
+                                      Command="{Binding PlacementTarget.Tag.RenameIconCommand,
+                                                        RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                      CommandParameter="{Binding}"/>
+                            <MenuItem Header="Change icon"
+                                      Command="{Binding PlacementTarget.Tag.ChangeIconCommand,
+                                                        RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                      CommandParameter="{Binding}"/>
+
+                            <!-- built-ins only: drop the uploaded image, go back to the drawn one -->
+                            <MenuItem Header="Reset icon"
+                                      Command="{Binding PlacementTarget.Tag.ResetIconCommand,
+                                                        RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                      CommandParameter="{Binding}">
+                                <MenuItem.Style>
+                                    <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding IsBuiltIn}" Value="True"/>
+                                                    <Condition Binding="{Binding HasCustomIcon}" Value="True"/>
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </MenuItem.Style>
+                            </MenuItem>
+
+                            <!--
+                              Which device runs it. The same app on two phones is two
+                              icons with the same name, so this is how they are told
+                              apart until the user renames one.
+                            -->
+                            <Separator Visibility="{Binding IsRemovable, Converter={StaticResource BoolToVis}}"/>
+                            <MenuItem Header="{Binding DeviceText}" IsEnabled="False"
+                                      Visibility="{Binding IsRemovable, Converter={StaticResource BoolToVis}}"/>
+
+                            <!-- AdbDesktop's own entries cannot be removed -->
+                            <Separator Visibility="{Binding IsRemovable, Converter={StaticResource BoolToVis}}"/>
+                            <MenuItem Header="Remove from desktop"
+                                      Visibility="{Binding IsRemovable, Converter={StaticResource BoolToVis}}"
+                                      Command="{Binding PlacementTarget.Tag.RemoveIconCommand,
+                                                        RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                      CommandParameter="{Binding}"/>
+                        </ContextMenu>
+                    </Border.ContextMenu>
+
+                    <StackPanel VerticalAlignment="Center">
+                        <Border Width="56" Height="56" CornerRadius="13"
+                                HorizontalAlignment="Center"
+                                Background="#1E1E24">
+                            <Grid>
+                                <Image Source="{Binding Image}"
+                                       Width="52" Height="52"
+                                       RenderOptions.BitmapScalingMode="HighQuality"
+                                       Visibility="{Binding Image, Converter={StaticResource NullToVis}}"/>
+                                <!-- placeholder when the cached PNG went missing -->
+                                <TextBlock Text="?" FontSize="22"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Image}" Value="{x:Null}">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                        </Border>
+
+                        <Grid Margin="4,7,4,0" MaxWidth="88">
+                            <TextBlock Text="{Binding Caption}"
+                                       FontSize="11.5"
+                                       Foreground="{StaticResource TextBrush}"
+                                       TextAlignment="Center"
+                                       TextTrimming="CharacterEllipsis">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsRenaming}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                                <TextBlock.Effect>
+                                    <DropShadowEffect BlurRadius="4" ShadowDepth="1" Opacity="0.9" Color="Black"/>
+                                </TextBlock.Effect>
+                            </TextBlock>
+
+                            <!-- Explorer-style in-place rename; takes over the caption slot. -->
+                            <TextBox x:Name="RenameBox"
+                                     Style="{StaticResource InlineRenameBoxStyle}"
+                                     Text="{Binding EditCaption, UpdateSourceTrigger=PropertyChanged}"
+                                     Visibility="{Binding IsRenaming, Converter={StaticResource BoolToVis}}"
+                                     IsVisibleChanged="RenameBox_IsVisibleChanged"
+                                     KeyDown="RenameBox_KeyDown"
+                                     LostKeyboardFocus="RenameBox_LostKeyboardFocus"
+                                     MouseLeftButtonDown="RenameBox_MouseLeftButtonDown"/>
+                        </Grid>
+                    </StackPanel>
+
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#16FFFFFF"/>
+                                </Trigger>
+                                <DataTrigger Binding="{Binding IsDragging}" Value="True">
+                                    <Setter Property="Opacity" Value="0.75"/>
+                                    <Setter Property="Background" Value="#22FFFFFF"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                </Border>
+            </DataTemplate>
+        </ItemsControl.ItemTemplate>
+    </ItemsControl>
+    </Grid>
+</UserControl>

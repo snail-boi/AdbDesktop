@@ -1,0 +1,102 @@
+<Window x:Class="AdbDesktop.UpdatePromptWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Update available"
+        Width="520"
+        SizeToContent="Height"
+        MinWidth="460"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Background="{DynamicResource DesktopBrush}"
+        Foreground="{DynamicResource TextBrush}">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="16,8" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="MinWidth" Value="92" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceHighBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#12000000" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border Margin="18" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="10">
+        <Grid Margin="20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Text="Update available" FontSize="22" FontWeight="SemiBold" />
+            <TextBlock Grid.Row="1" Margin="0,6,0,0" Opacity="0.8" TextWrapping="Wrap" Text="{Binding Summary}" />
+
+            <Border Grid.Row="2" Margin="0,14,0,0" Padding="12" Background="{DynamicResource DesktopBrush}" CornerRadius="8">
+                <StackPanel>
+                    <TextBlock Text="What's included" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto">
+                        <!-- Populated in code-behind by PatchNotesRenderer (formatted release notes). -->
+                        <ContentControl x:Name="NotesContent" Focusable="False" Margin="0,0,8,0" />
+                    </ScrollViewer>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Grid.Row="3" Margin="0,14,0,0" TextWrapping="Wrap" Opacity="0.8" Text="{Binding Prompt}" />
+
+            <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+                <Button Content="Yes" Style="{StaticResource PrimaryButton}" Width="100" Margin="0,0,8,0" Command="{Binding InstallCommand}" />
+                <Button Content="Remind me later" Style="{StaticResource SecondaryButton}" Margin="0,0,8,0" Command="{Binding RemindLaterCommand}"
+                        Visibility="{Binding AllowRemindLater, Converter={StaticResource BoolToVis}}" />
+                <Button Content="No" Style="{StaticResource SecondaryButton}" Width="100" Command="{Binding IgnoreCommand}" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

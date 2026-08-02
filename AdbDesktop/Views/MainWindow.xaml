@@ -1,0 +1,903 @@
+<Window x:Class="AdbDesktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:AdbDesktop"
+        Title="adbDesktop" Height="720" Width="1280"
+        MinHeight="420" MinWidth="640"
+        WindowStyle="None"
+        WindowState="Maximized"
+        ResizeMode="CanResize"
+        Background="{StaticResource DesktopBrush}"
+        FontFamily="Segoe UI"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display">
+
+    <!--
+      CaptionHeight=0 means the chrome contributes no draggable caption strip, so the
+      whole window is client space and the taskbar can serve as the drag handle. The
+      resize border stays live, and WindowChrome is also what stops a maximized
+      borderless window from spilling over the Windows taskbar.
+    -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0"
+                      ResizeBorderThickness="6"
+                      CornerRadius="0"
+                      GlassFrameThickness="0"
+                      UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis"/>
+        <local:BoolToFlowDirectionConverter x:Key="BoolToFlow"/>
+        <local:NullToVisibilityConverter x:Key="NullToVis"/>
+        <local:EmptyStringToVisibilityConverter x:Key="EmptyToVis"/>
+    </Window.Resources>
+
+    <Grid>
+        <!--
+          The taskbar is an overlay rather than a DockPanel row, so that a maximised
+          window can own the full surface and the bar can slide away over it. The
+          desktop's bottom margin is what reserves space for it in normal mode.
+        -->
+        <Grid x:Name="DesktopHost">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Margin" Value="0,0,0,44"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding WindowManager.IsImmersive}" Value="True">
+                            <Setter Property="Margin" Value="0"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+
+            <local:DesktopSurface x:Name="Surface" DataContext="{Binding Desktop}"/>
+
+            <!--
+              App windows sit above the icons but below every shell overlay, which is
+              only possible because they are WPF content rather than child HWNDs.
+            -->
+            <local:WindowLayer x:Name="Windows" DataContext="{Binding WindowManager}"/>
+
+            <!-- empty-state hint -->
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <!-- Settings is always present, so count is never 0. -->
+                            <DataTrigger Binding="{Binding Desktop.HasUserIcons}" Value="False">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+                <TextBlock Text="Your desktop is empty"
+                           FontSize="17" Foreground="{StaticResource MutedTextBrush}"
+                           HorizontalAlignment="Center"/>
+                <TextBlock Text="Use the search bar below to find an app and add it."
+                           FontSize="12.5" Foreground="{StaticResource MutedTextBrush}"
+                           Opacity="0.7" Margin="0,6,0,0" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- ================= taskbar ================= -->
+        <Border x:Name="Taskbar"
+                VerticalAlignment="Bottom"
+                Height="44"
+                Background="{StaticResource TaskbarBrush}"
+                BorderBrush="{StaticResource LineBrush}"
+                BorderThickness="0,1,0,0"
+                MouseLeftButtonDown="Taskbar_MouseLeftButtonDown"
+                MouseLeave="Taskbar_MouseLeave">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="TaskbarShift" Y="0"/>
+            </Border.RenderTransform>
+
+                <Grid Margin="6,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- nav cluster + running windows -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!--
+                          FlowDirection reverses the layout order for the Samsung
+                          arrangement (recents, home, back). Each button is forced back to
+                          LeftToRight so the glyphs are not mirrored with it: a back
+                          arrow still points left wherever it sits.
+                        -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                    FlowDirection="{Binding Taskbar.ReverseNavButtons,
+                                                            Converter={StaticResource BoolToFlow}}"
+                                    Visibility="{Binding Taskbar.ShowNavButtons,
+                                                         Converter={StaticResource BoolToVis}}">
+                            <Button Style="{StaticResource NavButtonStyle}"
+                                    FlowDirection="LeftToRight"
+                                    Command="{Binding NavBackCommand}"
+                                    ToolTip="Back (not implemented yet)">
+                                <Path Style="{StaticResource NavGlyphStyle}"
+                                      Data="{StaticResource NavBackGeometry}"/>
+                            </Button>
+                            <Button Style="{StaticResource NavButtonStyle}"
+                                    FlowDirection="LeftToRight"
+                                    Command="{Binding NavHomeCommand}"
+                                    ToolTip="Home (not implemented yet)">
+                                <Path Style="{StaticResource NavGlyphStyle}"
+                                      Data="{StaticResource NavHomeGeometry}"/>
+                            </Button>
+                            <Button Style="{StaticResource NavButtonStyle}"
+                                    FlowDirection="LeftToRight"
+                                    Command="{Binding NavRecentsCommand}"
+                                    ToolTip="Recents (not implemented yet)">
+                                <Path Style="{StaticResource NavGlyphStyle}"
+                                      Data="{StaticResource NavRecentsGeometry}"/>
+                            </Button>
+                        </StackPanel>
+
+                    <!-- running windows, so a minimised one can be brought back -->
+                    <!-- Capped so a long list can never reach the centred search bar. -->
+                    <ItemsControl ItemsSource="{Binding WindowManager.Windows}"
+                                  VerticalAlignment="Center" Margin="10,0,0,0"
+                                  MaxWidth="420" ClipToBounds="True"
+                                  Visibility="{Binding Taskbar.ShowWindowTabs,
+                                                       Converter={StaticResource BoolToVis}}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Cursor="Hand" Margin="2,0"
+                                        ToolTip="{Binding Title}"
+                                        Command="{Binding DataContext.WindowManager.TaskbarClickCommand,
+                                                          RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Bd" CornerRadius="6" Height="30" Padding="8,0"
+                                                    Background="Transparent"
+                                                    BorderBrush="Transparent" BorderThickness="0,0,0,2">
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <Image Width="16" Height="16" Source="{Binding Icon}"
+                                                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                    <TextBlock Text="{Binding Title}" FontSize="11.5"
+                                                               Margin="7,0,0,0" VerticalAlignment="Center"
+                                                               MaxWidth="110"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                </StackPanel>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background"
+                                                            Value="{StaticResource HoverBrush}"/>
+                                                </Trigger>
+                                                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background"
+                                                            Value="{StaticResource SurfaceHighBrush}"/>
+                                                    <Setter TargetName="Bd" Property="BorderBrush"
+                                                            Value="{StaticResource AccentBrush}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsMinimized}" Value="True">
+                                                    <Setter TargetName="Bd" Property="Opacity" Value="0.55"/>
+                                                </DataTrigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    </StackPanel>
+
+                    <!--
+                      Search takes centre stage, where DeX puts the app-drawer button.
+
+                      Spans all three columns and centres itself, rather than living in
+                      the middle column: the left column is Auto-sized and grows as
+                      windows are opened, which would otherwise shove the search bar to
+                      the right. Spanning means it is centred on the taskbar itself and
+                      stays put no matter what either side contains.
+                    -->
+                    <StackPanel Grid.Column="0" Grid.ColumnSpan="3"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Panel.ZIndex="5">
+
+                        <!-- collapsed form: the same target, minus the 360px of bar -->
+                        <Button Style="{StaticResource NavButtonStyle}" Width="34" Height="30"
+                                ToolTip="Search apps"
+                                Command="{Binding ToggleSearchCommand}"
+                                Visibility="{Binding Taskbar.SearchIconOnly,
+                                                     Converter={StaticResource BoolToVis}}">
+                            <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       VerticalAlignment="Center" Text="&#xE721;"/>
+                        </Button>
+
+                        <Border Width="360" Height="30"
+                                CornerRadius="15"
+                                Background="{StaticResource SurfaceHighBrush}"
+                                BorderBrush="{StaticResource LineBrush}"
+                                BorderThickness="1"
+                                Cursor="Hand"
+                                Visibility="{Binding Taskbar.ShowSearchBar,
+                                                     Converter={StaticResource BoolToVis}}"
+                                MouseLeftButtonUp="SearchBar_Click">
+                            <Grid Margin="12,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           VerticalAlignment="Center" Text="&#xE721;" Margin="0,0,8,0"/>
+                                <TextBlock Grid.Column="1"
+                                           VerticalAlignment="Center" FontSize="12.5"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           Text="Search apps"/>
+                            </Grid>
+                        </Border>
+
+                        <!--
+                          The one tab beside the search bar, and the way back from a device
+                          desktop. Device desktops are reached from the numbered boxes in
+                          the taskbar instead, so this never grows a tab per phone, which
+                          is also why it is a single letter, matching those boxes.
+
+                          Hidden until a device has been added, since until then Unified is
+                          the only desktop that exists.
+                        -->
+                        <Button Cursor="Hand" Margin="10,0,0,0"
+                                ToolTip="Unified desktop"
+                                Background="Transparent" BorderThickness="0" Padding="0"
+                                Command="{Binding ShowUnifiedCommand}"
+                                Visibility="{Binding HasDeviceDesktops,
+                                                     Converter={StaticResource BoolToVis}}">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Tab" Width="30" Height="30" CornerRadius="15"
+                                            Background="{StaticResource SurfaceHighBrush}"
+                                            BorderBrush="{StaticResource LineBrush}"
+                                            BorderThickness="1">
+                                        <TextBlock x:Name="Label" Text="U" FontSize="12.5"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{StaticResource MutedTextBrush}"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Tab" Property="Background"
+                                                    Value="{StaticResource HoverBrush}"/>
+                                        </Trigger>
+                                        <DataTrigger Binding="{Binding IsUnifiedActive}" Value="True">
+                                            <Setter TargetName="Tab" Property="Background"
+                                                    Value="{StaticResource AccentBrush}"/>
+                                            <Setter TargetName="Tab" Property="BorderBrush"
+                                                    Value="{StaticResource AccentBrush}"/>
+                                            <Setter TargetName="Label" Property="Foreground"
+                                                    Value="{StaticResource TextBrush}"/>
+                                        </DataTrigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </StackPanel>
+
+                    <!--
+                      Status cluster, left to right: one bundle per connected device, then
+                      the pairing button, then the clock. Window controls live in the
+                      auto-hiding top bar.
+                    -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
+                                Panel.ZIndex="6">
+
+                        <!--
+                          One bundle per device. Everything device-specific lives in here,
+                          so a second phone simply adds another bundle rather than needing
+                          anywhere in the taskbar to become a chooser.
+                        -->
+                        <ItemsControl ItemsSource="{Binding Devices}" VerticalAlignment="Center">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type local:DeviceInfo}">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                                Margin="0,0,8,0">
+
+                                        <!--
+                                          Numbered box: goes to this device's desktop. Hidden
+                                          with only one device attached, since a number that
+                                          is always "1" disambiguates nothing.
+                                        -->
+                                        <Button Cursor="Hand"
+                                                ToolTip="{Binding DesktopTooltip}"
+                                                ToolTipService.ShowOnDisabled="True"
+                                                Margin="0,0,6,0"
+                                                Background="Transparent" BorderThickness="0" Padding="0"
+                                                IsEnabled="{Binding IsAdded}"
+                                                Command="{Binding DataContext.DeviceDesktopCommand,
+                                                                  RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}"
+                                                Visibility="{Binding DataContext.ShowDeviceNumbers,
+                                                                     RelativeSource={RelativeSource AncestorType=Window},
+                                                                     Converter={StaticResource BoolToVis}}">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="Box" Width="22" Height="22" CornerRadius="6"
+                                                            Background="{StaticResource SurfaceHighBrush}"
+                                                            BorderBrush="{StaticResource LineBrush}"
+                                                            BorderThickness="1">
+                                                        <TextBlock Text="{Binding NumberText}"
+                                                                   FontSize="11.5"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"
+                                                                   Foreground="{StaticResource TextBrush}"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Box" Property="Background"
+                                                                    Value="{StaticResource HoverBrush}"/>
+                                                        </Trigger>
+                                                        <!-- its desktop is the one on screen -->
+                                                        <DataTrigger Binding="{Binding IsActiveDesktop}" Value="True">
+                                                            <Setter TargetName="Box" Property="Background"
+                                                                    Value="{StaticResource AccentBrush}"/>
+                                                            <Setter TargetName="Box" Property="BorderBrush"
+                                                                    Value="{StaticResource AccentBrush}"/>
+                                                        </DataTrigger>
+                                                        <!-- connected but not added: it has no desktop to go to -->
+                                                        <Trigger Property="IsEnabled" Value="False">
+                                                            <Setter TargetName="Box" Property="Opacity" Value="0.45"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+
+                                        <!--
+                                          Connection dot. Only connected devices are listed,
+                                          so this reports the transport rather than presence:
+                                          solid is USB, a ring is wireless.
+                                        -->
+                                        <Ellipse Width="8" Height="8" Margin="0,0,7,0"
+                                                 VerticalAlignment="Center"
+                                                 ToolTip="{Binding ConnectionTooltip}">
+                                            <Ellipse.Style>
+                                                <!--
+                                                  Colour carries the transport: blue is
+                                                  wireless, green is USB. Both are solid,
+                                                  so the difference reads at a glance
+                                                  rather than needing a hover.
+                                                -->
+                                                <Style TargetType="Ellipse">
+                                                    <Setter Property="Fill"
+                                                            Value="{StaticResource WirelessBrush}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsUsb}" Value="True">
+                                                            <Setter Property="Fill"
+                                                                    Value="{StaticResource OnlineBrush}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+
+                                        <!--
+                                          The model, in text. A dot alone says a device is
+                                          there but not which one, which is useless the
+                                          moment there is more than one.
+                                        -->
+                                        <TextBlock Text="{Binding Label}" FontSize="12"
+                                                   VerticalAlignment="Center" Margin="0,0,8,0"
+                                                   MaxWidth="150" TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding ConnectionTooltip}"
+                                                   Foreground="{StaticResource TextBrush}"/>
+
+                                        <!-- battery -->
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                                    ToolTip="{Binding BatteryTooltip}"
+                                                    Visibility="{Binding DataContext.Taskbar.ShowBattery,
+                                                                         RelativeSource={RelativeSource AncestorType=Window},
+                                                                         Converter={StaticResource BoolToVis}}">
+                                            <!-- charging bolt sits outside, so it never crowds
+                                                 the percentage drawn inside the pill -->
+                                            <Path Style="{StaticResource NavGlyphStyle}"
+                                                  Data="{StaticResource BatteryBoltGeometry}"
+                                                  Margin="0,0,3,0" VerticalAlignment="Center"
+                                                  Visibility="{Binding BatteryCharging,
+                                                                       Converter={StaticResource BoolToVis}}"/>
+                                            <local:BatteryGlyph Level="{Binding BatteryLevel}"
+                                                                Charging="{Binding BatteryCharging}"
+                                                                Width="34" Height="17"
+                                                                VerticalAlignment="Center"/>
+                                        </StackPanel>
+
+                                        <!-- audio link for this device -->
+                                        <Button Style="{StaticResource NavButtonStyle}" Width="30" Height="30"
+                                                ToolTip="{Binding AudioTooltip}"
+                                                Command="{Binding DataContext.DeviceAudioCommand,
+                                                                  RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}">
+                                            <Grid>
+                                                <!-- speaker body: brighter once the link is up -->
+                                                <Path Data="M 0,5 L 3,5 L 7,1 L 7,15 L 3,11 L 0,11 Z">
+                                                    <Path.Style>
+                                                        <Style TargetType="Path" BasedOn="{StaticResource NavGlyphStyle}">
+                                                            <Setter Property="Fill" Value="{StaticResource MutedTextBrush}"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding AudioActive}" Value="True">
+                                                                    <Setter Property="Fill" Value="{StaticResource TextBrush}"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Path.Style>
+                                                </Path>
+                                                <!-- inner wave: any volume above zero -->
+                                                <Path Style="{StaticResource NavGlyphStyle}"
+                                                      Fill="{x:Null}"
+                                                      Stroke="{StaticResource TextBrush}" StrokeThickness="1.4"
+                                                      Margin="12,0,0,0"
+                                                      Data="M 0,5 A 4,4 0 0 1 0,11"
+                                                      Visibility="{Binding AudioInnerWave,
+                                                                           Converter={StaticResource BoolToVis}}"/>
+                                                <!-- outer wave: only once it is genuinely loud -->
+                                                <Path Style="{StaticResource NavGlyphStyle}"
+                                                      Fill="{x:Null}"
+                                                      Stroke="{StaticResource TextBrush}" StrokeThickness="1.4"
+                                                      Margin="12,0,0,0"
+                                                      Data="M 2.5,2.5 A 8,8 0 0 1 2.5,13.5"
+                                                      Visibility="{Binding AudioOuterWave,
+                                                                           Converter={StaticResource BoolToVis}}"/>
+                                                <!-- cross: not linked, or linked but silent -->
+                                                <Path Style="{StaticResource NavGlyphStyle}"
+                                                      Fill="{x:Null}"
+                                                      Stroke="{StaticResource DangerBrush}" StrokeThickness="1.6"
+                                                      Data="M 0,1 L 16,15"
+                                                      Visibility="{Binding AudioMuted,
+                                                                           Converter={StaticResource BoolToVis}}"/>
+                                            </Grid>
+                                        </Button>
+
+                                        <!-- notifications: per device, so there is no global one -->
+                                        <Button Style="{StaticResource NavButtonStyle}" Width="30" Height="30"
+                                                ToolTip="{Binding NotificationsTooltip}"
+                                                Visibility="{Binding DataContext.Taskbar.ShowNotifications,
+                                                                     RelativeSource={RelativeSource AncestorType=Window},
+                                                                     Converter={StaticResource BoolToVis}}"
+                                                Command="{Binding DataContext.DeviceNotificationsCommand,
+                                                                  RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}">
+                                            <Path Style="{StaticResource NavGlyphStyle}"
+                                                  Fill="{StaticResource MutedTextBrush}"
+                                                  Data="M 7,0 C 10,0 12,2 12,5 L 12,9 L 14,12 L 0,12 L 2,9 L 2,5 C 2,2 4,0 7,0 Z
+                                                        M 5,13 L 9,13 C 9,14.7 8.1,15.5 7,15.5 C 5.9,15.5 5,14.7 5,13 Z"/>
+                                        </Button>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- no device at all: nothing above renders, so say so -->
+                        <TextBlock Text="No device" FontSize="12"
+                                   VerticalAlignment="Center" Margin="0,0,4,0"
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   Visibility="{Binding HasDevices,
+                                                        Converter={StaticResource InverseBoolToVis}}"/>
+
+                        <!--
+                          Pairing / adding. This replaced the old connection pill: with a
+                          bundle per device there is nothing left for a pill to name, so it
+                          slims down to the button that opens the connection panel.
+                        -->
+                        <Button Style="{StaticResource NavButtonStyle}" Width="34" Height="30"
+                                Margin="2,0,0,0"
+                                ToolTip="Add or pair a device"
+                                Command="{Binding ToggleConnectionCommand}">
+                            <Grid>
+                                <!-- phone outline -->
+                                <Path Style="{StaticResource NavGlyphStyle}"
+                                      Fill="{x:Null}"
+                                      Stroke="{StaticResource MutedTextBrush}" StrokeThickness="1.4"
+                                      Data="M 1,1 L 8,1 A 1,1 0 0 1 9,2 L 9,14 A 1,1 0 0 1 8,15 L 1,15
+                                            A 1,1 0 0 1 0,14 L 0,2 A 1,1 0 0 1 1,1 Z"/>
+                                <!-- plus, offset to the corner so the phone stays readable -->
+                                <Path Style="{StaticResource NavGlyphStyle}"
+                                      Stroke="{StaticResource TextBrush}" StrokeThickness="1.6"
+                                      Data="M 12,8 L 12,15 M 8.5,11.5 L 15.5,11.5"/>
+                            </Grid>
+                        </Button>
+
+                        <!-- clock, rightmost: time with the date beneath it -->
+                        <StackPanel VerticalAlignment="Center" Margin="12,0,6,0"
+                                    Visibility="{Binding Taskbar.ShowClock,
+                                                         Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{Binding Taskbar.Time}" FontSize="12.5"
+                                       HorizontalAlignment="Right"
+                                       LineHeight="15" LineStackingStrategy="BlockLineHeight"/>
+                            <TextBlock Text="{Binding Taskbar.Date}" FontSize="10"
+                                       HorizontalAlignment="Right"
+                                       LineHeight="12" LineStackingStrategy="BlockLineHeight"
+                                       Foreground="{StaticResource MutedTextBrush}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+        </Border>
+
+        <!--
+          Reveal strip along the very bottom. Only live while immersive; otherwise the
+          taskbar is already there and this would swallow clicks aimed at it.
+        -->
+        <Border x:Name="BottomHotZone"
+                VerticalAlignment="Bottom" Height="5"
+                Background="Transparent"
+                MouseEnter="BottomHotZone_MouseEnter">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding WindowManager.IsImmersive}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+        </Border>
+
+        <!-- ================= search overlay ================= -->
+        <Grid Visibility="{Binding IsSearchOpen, Converter={StaticResource BoolToVis}}">
+            <!-- click-away catcher -->
+            <Rectangle Fill="#01000000" MouseLeftButtonDown="SearchDismiss_Click"/>
+
+            <Border Width="440" MaxHeight="460"
+                    VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                    Margin="0,0,0,52"
+                    Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource LineBrush}"
+                    BorderThickness="1" CornerRadius="10">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="24" ShadowDepth="4" Opacity="0.55" Color="Black"/>
+                </Border.Effect>
+
+                <DockPanel DataContext="{Binding Search}" Margin="6">
+
+                    <Border DockPanel.Dock="Top" Height="34" CornerRadius="7" Margin="4,4,4,6"
+                            Background="{StaticResource SurfaceHighBrush}">
+                        <Grid Margin="10,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       VerticalAlignment="Center" Text="&#xE721;" Margin="0,0,8,0"/>
+                            <Grid Grid.Column="1">
+                                <TextBox x:Name="SearchBox"
+                                         Style="{StaticResource SearchBoxStyle}"
+                                         Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}"
+                                         KeyDown="SearchBox_KeyDown"/>
+                                <TextBlock Text="Search apps by name or package"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           FontSize="12.5" VerticalAlignment="Center"
+                                           IsHitTestVisible="False"
+                                           Visibility="{Binding Query, Converter={StaticResource EmptyToVis}}"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <TextBlock DockPanel.Dock="Bottom" Margin="10,4,10,8" FontSize="11.5"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               TextWrapping="Wrap"
+                               Text="{Binding StatusMessage}"
+                               Visibility="{Binding StatusMessage, Converter={StaticResource EmptyToVis}, ConverterParameter=invert}"/>
+
+                    <Grid>
+                        <ListBox x:Name="AppList"
+                                 Style="{StaticResource DarkListBoxStyle}"
+                                 ItemContainerStyle="{StaticResource DarkListItemStyle}"
+                                 ItemsSource="{Binding Results}"
+                                 MouseDoubleClick="AppList_Activate"
+                                 KeyDown="AppList_KeyDown">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <!-- names only, no icons: the icon cannot exist until the APK is pulled -->
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding DisplayName}" FontSize="13"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
+                                            <TextBlock Text="{Binding PackageName}" FontSize="11"
+                                                       Foreground="{StaticResource MutedTextBrush}"/>
+                                            <!--
+                                              One row per package, not per installation, so
+                                              this is the only thing saying where it lives.
+                                              Blank with a single device, where it would be
+                                              the same on every row.
+                                            -->
+                                            <TextBlock Text="{Binding DeviceSummary}" FontSize="11"
+                                                       Margin="8,0,0,0"
+                                                       Foreground="{StaticResource AccentBrush}"
+                                                       Visibility="{Binding HasDeviceSummary,
+                                                                            Converter={StaticResource BoolToVis}}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <TextBlock Text="Loading apps..." Margin="12,10"
+                                   Foreground="{StaticResource MutedTextBrush}" FontSize="12.5"
+                                   Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"/>
+                    </Grid>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <!-- ================= audio panel ================= -->
+        <Grid Visibility="{Binding Audio.IsPanelOpen, Converter={StaticResource BoolToVis}}">
+            <Rectangle Fill="#01000000" MouseLeftButtonDown="AudioDismiss_Click"/>
+
+            <Border Width="290" VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                    Margin="0,0,120,52"
+                    Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource LineBrush}"
+                    BorderThickness="1" CornerRadius="10" Padding="16">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="24" ShadowDepth="4" Opacity="0.55" Color="Black"/>
+                </Border.Effect>
+
+                <StackPanel>
+                    <TextBlock Text="{Binding Audio.PanelTitle}" FontSize="14"/>
+                    <TextBlock FontSize="11.5" Foreground="{StaticResource MutedTextBrush}"
+                               Margin="0,4,0,12" TextWrapping="Wrap"
+                               Text="Playing through this PC. Android captures audio device-wide, so this covers every window on that device — and only one device can be linked at a time."/>
+
+                    <TextBlock Text="{Binding Audio.Status}" FontSize="11.5" Margin="0,0,0,10"
+                               Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap"
+                               Visibility="{Binding Audio.Status, Converter={StaticResource EmptyToVis},
+                                                    ConverterParameter=invert}"/>
+
+                    <Grid Margin="0,0,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Volume" FontSize="12"
+                                   VerticalAlignment="Center" Margin="0,0,10,0"
+                                   Foreground="{StaticResource MutedTextBrush}"/>
+                        <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                                VerticalAlignment="Center"
+                                Value="{Binding Audio.Volume, Mode=TwoWay}"/>
+                        <TextBlock Grid.Column="2" FontSize="11.5" Width="34"
+                                   TextAlignment="Right" VerticalAlignment="Center"
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   Text="{Binding Audio.Volume, StringFormat={}{0:F0}%, Mode=OneWay}"/>
+                    </Grid>
+
+                    <Button Content="Disconnect audio" Style="{StaticResource SecondaryButtonStyle}"
+                            HorizontalAlignment="Right"
+                            Command="{Binding Audio.DisconnectCommand}"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- ================= connection panel ================= -->
+        <Grid Visibility="{Binding IsConnectionOpen, Converter={StaticResource BoolToVis}}">
+            <Rectangle Fill="#01000000" MouseLeftButtonDown="ConnectionDismiss_Click"/>
+
+            <Border Width="430"
+                    VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                    Margin="0,0,10,52"
+                    Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource LineBrush}"
+                    BorderThickness="1" CornerRadius="10">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="24" ShadowDepth="4" Opacity="0.55" Color="Black"/>
+                </Border.Effect>
+                <local:ConnectionPanel DataContext="{Binding Connection}"/>
+            </Border>
+        </Grid>
+
+        <!-- ================= inline icon picker ================= -->
+        <Grid Background="#B0000000"
+              Visibility="{Binding IsIconPickerOpen, Converter={StaticResource BoolToVis}}">
+            <Border Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                    CornerRadius="12"
+                    Width="660" MaxHeight="560"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="30" ShadowDepth="6" Opacity="0.6" Color="Black"/>
+                </Border.Effect>
+                <local:IconPickerPanel DataContext="{Binding IconPicker}"/>
+            </Border>
+        </Grid>
+
+        <!-- ================= inline confirm ================= -->
+        <Grid Background="#B0000000"
+              Visibility="{Binding IsConfirmOpen, Converter={StaticResource BoolToVis}}">
+            <Border Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                    CornerRadius="10" Padding="24,20" MaxWidth="420"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="28" ShadowDepth="5" Opacity="0.6" Color="Black"/>
+                </Border.Effect>
+                <StackPanel>
+                    <TextBlock Text="{Binding ConfirmTitle}" FontSize="15"/>
+                    <TextBlock Text="{Binding ConfirmMessage}" FontSize="13" Margin="0,10,0,0"
+                               TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding ConfirmDetail}" FontSize="11.5" Margin="0,8,0,0"
+                               Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+                        <Button Content="Cancel" Style="{StaticResource SecondaryButtonStyle}"
+                                Margin="0,0,8,0" Command="{Binding ConfirmNoCommand}"/>
+                        <Button Content="Add" Style="{StaticResource PrimaryButtonStyle}"
+                                Command="{Binding ConfirmYesCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- ================= inline device chooser ================= -->
+        <Grid Background="#B0000000"
+              Visibility="{Binding IsChooseDeviceOpen, Converter={StaticResource BoolToVis}}">
+            <Border Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                    CornerRadius="10" Padding="24,20" MaxWidth="420"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="28" ShadowDepth="5" Opacity="0.6" Color="Black"/>
+                </Border.Effect>
+                <StackPanel>
+                    <TextBlock Text="Which device?" FontSize="15"/>
+                    <TextBlock Text="{Binding ChooseDeviceMessage}" FontSize="12.5" Margin="0,10,0,4"
+                               Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap"/>
+
+                    <ItemsControl ItemsSource="{Binding ChoiceDevices}" Margin="0,8,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type local:DeviceInfo}">
+                                <Button Cursor="Hand" Margin="0,0,0,6"
+                                        HorizontalContentAlignment="Stretch"
+                                        Background="Transparent" BorderThickness="0" Padding="0"
+                                        Command="{Binding DataContext.ChooseDeviceCommand,
+                                                          RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Row" CornerRadius="8" Padding="12,9"
+                                                    Background="{StaticResource SurfaceHighBrush}"
+                                                    BorderBrush="{StaticResource LineBrush}"
+                                                    BorderThickness="1">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Border Width="20" Height="20" CornerRadius="5"
+                                                            Margin="0,0,10,0"
+                                                            Background="{StaticResource AccentBrush}">
+                                                        <TextBlock Text="{Binding NumberText}"
+                                                                   FontSize="11"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <TextBlock Text="{Binding Label}" FontSize="12.5"
+                                                               VerticalAlignment="Center"/>
+                                                    <TextBlock Text="{Binding TransportText}" FontSize="11"
+                                                               Margin="8,0,0,0" VerticalAlignment="Center"
+                                                               Foreground="{StaticResource MutedTextBrush}"/>
+                                                </StackPanel>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Row" Property="Background"
+                                                            Value="{StaticResource HoverBrush}"/>
+                                                    <Setter TargetName="Row" Property="BorderBrush"
+                                                            Value="{StaticResource AccentBrush}"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Button Content="Cancel" Style="{StaticResource SecondaryButtonStyle}"
+                            HorizontalAlignment="Right" Margin="0,10,0,0"
+                            Command="{Binding CancelChooseDeviceCommand}"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- ================= inline notice ================= -->
+        <Grid Background="#B0000000"
+              Visibility="{Binding IsNoticeOpen, Converter={StaticResource BoolToVis}}">
+            <Border Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                    CornerRadius="10" Padding="24,20" MaxWidth="420"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="28" ShadowDepth="5" Opacity="0.6" Color="Black"/>
+                </Border.Effect>
+                <StackPanel>
+                    <TextBlock Text="{Binding NoticeTitle}" FontSize="15"/>
+                    <TextBlock Text="{Binding NoticeMessage}" FontSize="12.5" Margin="0,10,0,0"
+                               Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap"/>
+                    <Button Content="OK" Style="{StaticResource PrimaryButtonStyle}"
+                            HorizontalAlignment="Right" Margin="0,18,0,0"
+                            Command="{Binding DismissNoticeCommand}"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- ================= busy overlay ================= -->
+        <Grid Background="#B0000000"
+              Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}">
+            <Border Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                    CornerRadius="10" Padding="28,22"
+                    HorizontalAlignment="Center" VerticalAlignment="Center" MinWidth="320">
+                <StackPanel>
+                    <TextBlock Text="Adding app" FontSize="15" HorizontalAlignment="Center"/>
+                    <TextBlock Text="{Binding BusyMessage}" FontSize="12.5" Margin="0,8,0,14"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               HorizontalAlignment="Center" TextWrapping="Wrap"/>
+                    <ProgressBar IsIndeterminate="True" Height="3" Width="260"
+                                 Background="{StaticResource SurfaceHighBrush}"
+                                 Foreground="{StaticResource AccentBrush}" BorderThickness="0"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!--
+          ================= auto-hiding window controls =================
+          There is no title bar, so minimise/maximise/close live in a strip that slides
+          down when the pointer reaches the top edge of the screen and retracts again
+          once it leaves.
+        -->
+        <!--
+          Invisible trigger strip pinned to the very top of the client area. Using a real
+          hit-testable element with MouseEnter is far more reliable than testing mouse
+          coordinates on every move.
+        -->
+        <Border x:Name="TopHotZone"
+                VerticalAlignment="Top" Height="6"
+                Background="Transparent"
+                MouseEnter="TopHotZone_MouseEnter"/>
+
+        <Border x:Name="TopBar"
+                VerticalAlignment="Top" HorizontalAlignment="Right"
+                Height="34" Margin="0,0,10,0"
+                CornerRadius="0,0,9,9"
+                MouseLeave="TopBar_MouseLeave"
+                Background="{StaticResource TaskbarBrush}"
+                BorderBrush="{StaticResource LineBrush}"
+                BorderThickness="1,0,1,1"
+                Opacity="0"
+                MouseLeftButtonDown="TopBar_MouseLeftButtonDown">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="TopBarShift" Y="-40"/>
+            </Border.RenderTransform>
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.5" Color="Black"/>
+            </Border.Effect>
+
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0">
+                <TextBlock Text="adbDesktop" FontSize="11.5" VerticalAlignment="Center"
+                           Foreground="{StaticResource MutedTextBrush}" Margin="8,0,10,0"/>
+                <Button Style="{StaticResource WindowButtonStyle}" Content="&#xE921;"
+                        Height="26" ToolTip="Minimise" Click="Minimise_Click"/>
+                <Button Style="{StaticResource WindowButtonStyle}" Content="&#xE922;"
+                        Height="26" ToolTip="Maximise / restore" Click="MaximiseRestore_Click"/>
+                <Button Style="{StaticResource CloseButtonStyle}" Content="&#xE8BB;"
+                        Height="26" ToolTip="Close" Click="Close_Click"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
