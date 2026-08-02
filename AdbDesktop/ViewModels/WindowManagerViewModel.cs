@@ -80,13 +80,15 @@ namespace AdbDesktop
         }
 
         /// <summary>
-        /// Opens a window for a desktop icon. Always a NEW one, even for an app that is
-        /// already open on that device: each window gets its own Android virtual display,
-        /// so a second one is a genuinely separate instance rather than a duplicate view.
-        /// Existing windows are reached from their taskbar tabs.
+        /// Opens a window for a desktop icon, or brings the app's existing window forward
+        /// if it already has one on that device.
         ///
-        /// The exception is Settings, which is AdbDesktop's own and has nothing to gain from
-        /// a second copy.
+        /// A second window would get its own virtual display, but not its own copy of the
+        /// app: the device-side server launches with FLAG_ACTIVITY_NEW_TASK alone, so
+        /// Android MOVES the running task to whichever display asked for it last. The
+        /// second window would therefore take the app off the first, leaving that one
+        /// frozen on its final frame. Reusing the window is the honest behaviour until the
+        /// launch itself can ask for a separate task.
         /// </summary>
         public AppWindowViewModel Open(DesktopIconViewModel icon)
         {
@@ -94,28 +96,27 @@ namespace AdbDesktop
             // primary one. Built-in entries (AdbDesktop Settings) have no device at all.
             var serial = string.IsNullOrEmpty(icon.DeviceSerial) ? DeviceSerial : icon.DeviceSerial;
 
-            if (BuiltInApps.IsSettings(icon.Package)
-                && Windows.FirstOrDefault(w => w.IsSettings) is { } settings)
+            // Settings matches on being Settings at all -- it is AdbDesktop's own and belongs
+            // to no device, so the serial it happened to open under says nothing. Everything
+            // else matches on app AND device: the same app on two phones is two windows.
+            var existing = BuiltInApps.IsSettings(icon.Package)
+                ? Windows.FirstOrDefault(w => w.IsSettings)
+                : Windows.FirstOrDefault(w =>
+                    string.Equals(w.Package, icon.Package, StringComparison.Ordinal)
+                    && string.Equals(w.DeviceSerial, serial, StringComparison.Ordinal));
+
+            if (existing != null)
             {
-                if (settings.IsMinimized)
-                    settings.IsMinimized = false;
-
-                Activate(settings);
-                return settings;
+                // Activate un-minimises on the way past.
+                Activate(existing);
+                return existing;
             }
-
-            // Package alone is not the key: the same app on two phones is two windows, and
-            // the same app twice on one phone is two more.
-            var siblings = Windows.Count(w =>
-                string.Equals(w.Package, icon.Package, StringComparison.Ordinal)
-                && string.Equals(w.DeviceSerial, serial, StringComparison.Ordinal));
 
             var window = new AppWindowViewModel
             {
                 Package = icon.Package,
                 DeviceSerial = serial,
-                // Numbered from the second one on, so the taskbar tabs stay tellable apart.
-                Title = siblings == 0 ? icon.Caption : $"{icon.Caption} ({siblings + 1})",
+                Title = icon.Caption,
                 Settings = BuiltInApps.IsSettings(icon.Package) ? SettingsFactory?.Invoke() : null,
                 Icon = icon.Image,
                 Width = Math.Min(880, Math.Max(AppWindowViewModel.MinWidth, _surfaceWidth * 0.55)),

@@ -311,8 +311,32 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type local:DeviceInfo}">
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                                                Margin="0,0,8,0">
+                                    <!--
+                                      Each bundle is boxed once there is more than one
+                                      device: number, dot, label, battery, audio and
+                                      notifications otherwise run straight into the next
+                                      phone's, and nothing says where the seam is.
+                                    -->
+                                    <Border Margin="0,0,6,0" CornerRadius="9" Padding="6,2">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="Transparent"/>
+                                                <Setter Property="BorderThickness" Value="0"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Value="True"
+                                                                 Binding="{Binding DataContext.HasMultipleDevices,
+                                                                                   RelativeSource={RelativeSource AncestorType=Window}}">
+                                                        <Setter Property="Background"
+                                                                Value="{StaticResource SurfaceBrush}"/>
+                                                        <Setter Property="BorderBrush"
+                                                                Value="{StaticResource LineBrush}"/>
+                                                        <Setter Property="BorderThickness" Value="1"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
 
                                         <!--
                                           Numbered box: goes to this device's desktop. Hidden
@@ -397,11 +421,23 @@
                                           there but not which one, which is useless the
                                           moment there is more than one.
                                         -->
-                                        <TextBlock Text="{Binding Label}" FontSize="12"
-                                                   VerticalAlignment="Center" Margin="0,0,8,0"
-                                                   MaxWidth="150" TextTrimming="CharacterEllipsis"
-                                                   ToolTip="{Binding ConnectionTooltip}"
-                                                   Foreground="{StaticResource TextBrush}"/>
+                                        <StackPanel VerticalAlignment="Center" Margin="0,0,8,0">
+                                            <TextBlock Text="{Binding Label}" FontSize="12"
+                                                       MaxWidth="150" TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding ConnectionTooltip}"
+                                                       Foreground="{StaticResource TextBrush}"/>
+
+                                            <!--
+                                              Underlined in this device's own colour, which
+                                              is what its icons carry on the unified desktop.
+                                              Only while the colour marker is in use.
+                                            -->
+                                            <Border Height="3" CornerRadius="1.5" Margin="0,3,0,0"
+                                                    Background="{Binding DeviceBrush}"
+                                                    ToolTip="{Binding ConnectionTooltip}"
+                                                    Visibility="{Binding ShowDeviceColour,
+                                                                         Converter={StaticResource BoolToVis}}"/>
+                                        </StackPanel>
 
                                         <!-- battery -->
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
@@ -483,6 +519,7 @@
                                                         M 5,13 L 9,13 C 9,14.7 8.1,15.5 7,15.5 C 5.9,15.5 5,14.7 5,13 Z"/>
                                         </Button>
                                     </StackPanel>
+                                    </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>

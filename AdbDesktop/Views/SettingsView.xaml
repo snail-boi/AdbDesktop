@@ -229,9 +229,45 @@
 
                 <!-- ===== icons ===== -->
                 <StackPanel Visibility="{Binding IsIcons, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Text="Icons" Style="{StaticResource SectionHeadingStyle}"/>
-                    <TextBlock Style="{StaticResource EmptyTabStyle}"
-                               Text="Nothing to configure here yet. Icon size and grid spacing are fixed for now; individual icons can be renamed and re-iconned from their right-click menu."/>
+                    <TextBlock Text="Appearance" Style="{StaticResource SectionHeadingStyle}"/>
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="0,0,0,12"
+                               Text="Applies to every desktop. Individual icons can still be renamed and re-iconned from their right-click menu."/>
+
+                    <CheckBox Style="{StaticResource DarkCheckBoxStyle}" Margin="0,0,0,4"
+                              Content="Background behind icons"
+                              IsChecked="{Binding IconBackground, Mode=TwoWay}"/>
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="25,0,0,12"
+                               Text="Off leaves the artwork sitting straight on the wallpaper."/>
+
+                    <CheckBox Style="{StaticResource DarkCheckBoxStyle}" Margin="0,0,0,4"
+                              Content="Scale icons up to fill the box"
+                              IsChecked="{Binding ScaleIconsToFit, Mode=TwoWay}"/>
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="25,0,0,12"
+                               Text="Trims the transparent margin off the artwork so icons drawn small inside a large canvas stop looking undersized next to the rest."/>
+
+                    <TextBlock Text="Shape" Style="{StaticResource LabelTextStyle}"/>
+                    <ComboBox Width="180" HorizontalAlignment="Left"
+                              ItemsSource="{Binding IconShapeNames}"
+                              SelectedItem="{Binding IconShape, Mode=TwoWay}"/>
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="0,6,0,0"
+                               Text="Shapes the background and clips the artwork to match."/>
+
+                    <TextBlock Text="Which device an app runs on"
+                               Style="{StaticResource SectionHeadingStyle}" Margin="0,22,0,10"/>
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="0,0,0,10"
+                               Text="Unified desktop only. On a device's own desktop every icon belongs to that device, so there is nothing to tell apart."/>
+
+                    <TextBlock Text="Marker" Style="{StaticResource LabelTextStyle}"/>
+                    <ComboBox Width="180" HorizontalAlignment="Left"
+                              ItemsSource="{Binding DeviceMarkerNames}"
+                              SelectedItem="{Binding DeviceMarker, Mode=TwoWay}"/>
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="0,6,0,0"
+                               Text="Colour puts a bar under the icon in the device's own colour. Badge puts the device's number on it, the same number the taskbar uses."/>
+
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="0,8,0,0"
+                               Foreground="{StaticResource AccentBrush}"
+                               Text="Each device is underlined in its own colour in the connection panel, so you can see which colour is which."
+                               Visibility="{Binding IsColourMarker, Converter={StaticResource BoolToVis}}"/>
                 </StackPanel>
 
                 <!-- ===== other ===== -->

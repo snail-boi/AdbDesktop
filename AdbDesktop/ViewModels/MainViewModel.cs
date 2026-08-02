@@ -86,7 +86,6 @@ namespace AdbDesktop
             // Windows are keyed by the device's identity serial; mirroring needs whatever
             // adb transport currently reaches it.
             WindowManager.TransportResolver = s => _registry.BySerial(s)?.Transport;
-            WindowManager.SettingsFactory = () => new SettingsViewModel(Desktop, Taskbar);
 
             // Turning multi-desktop off has to take effect now, not on the next switch:
             // the desktop you are standing on may be the one that just became unreachable.
@@ -94,6 +93,15 @@ namespace AdbDesktop
 
             Connection = new ConnectionViewModel(App.Config, _registry);
             Connection.RemoveRequested += RemoveDevice;
+
+            // After Connection exists: Settings edits the device markers, which the
+            // taskbar and the connection panel are the legend for.
+            WindowManager.SettingsFactory = () =>
+            {
+                var settings = new SettingsViewModel(Desktop, Taskbar);
+                settings.IconSettingsChanged += OnIconSettingsChanged;
+                return settings;
+            };
 
             NavBackCommand = new RelayCommand(() => NavPlaceholder("back"));
             NavHomeCommand = new RelayCommand(() => NavPlaceholder("home"));
@@ -123,6 +131,12 @@ namespace AdbDesktop
             ResetIconCommand = new RelayCommand<DesktopIconViewModel>(ResetIcon);
 
             Desktop.Load();
+
+            // Nothing has been enumerated yet, so this greys everything that is not
+            // built in. The first DevicesChanged puts back whatever is actually here --
+            // without it the restored icons would look launchable until then.
+            Desktop.ApplyDeviceStates(_registry.Added.ToList());
+
             Desktop.IconActivated += OnIconActivated;
         }
 
@@ -430,6 +444,7 @@ namespace AdbDesktop
             Desktop.ApplyDeviceStates(added);
             Audio.Sync(added);
             RaisePropertyChanged(nameof(HasDevices));
+            RaisePropertyChanged(nameof(HasMultipleDevices));
             RaisePropertyChanged(nameof(ShowDeviceNumbers));
 
             // A device desktop cannot outlive its device being added and connected -- the
@@ -511,6 +526,20 @@ namespace AdbDesktop
 
         private void ShowUnifiedDesktop() => ShowDesktop(string.Empty);
 
+        /// <summary>
+        /// Repaints everything that reads the icon settings. The device markers show on
+        /// the desktop, but the taskbar and the connection panel are what say which colour
+        /// belongs to which phone, so all three move together.
+        /// </summary>
+        private void OnIconSettingsChanged()
+        {
+            Desktop.RefreshIconAppearance();
+            Connection.RefreshDeviceMarkers();
+
+            foreach (var device in _registry.Devices)
+                device.RaiseMarkerChanged();
+        }
+
         private void OnChromeChanged()
         {
             if (Taskbar.DisableMultiDesktop && !Desktop.IsUnified)
@@ -580,6 +609,13 @@ namespace AdbDesktop
         /// then they lead nowhere.
         /// </summary>
         public bool ShowDeviceNumbers => Devices.Count > 1 && !Taskbar.DisableMultiDesktop;
+
+        /// <summary>
+        /// Boxes each device's taskbar bundle so it is obvious where one phone's controls
+        /// end and the next one's begin. With a single device there is nothing to run
+        /// into, and the box would just be chrome around the whole cluster.
+        /// </summary>
+        public bool HasMultipleDevices => Devices.Count > 1;
 
         /// <summary>
         /// Builds the search list from every device at once. A package present on several
@@ -796,7 +832,9 @@ namespace AdbDesktop
             if (chosen == null)
                 return;
 
-            var iconFile = IconStore.Save(icon.Package, chosen);
+            // Built-ins belong to adbDesktop rather than to a phone, so they hash against
+            // an empty serial -- one file per desktop's copy is not wanted here.
+            var iconFile = IconStore.Save(icon.Package, icon.DeviceSerial, chosen);
             if (iconFile == null)
             {
                 ShowNotice("Could not save icon", "Writing the icon file failed. See the log.");
@@ -858,7 +896,9 @@ namespace AdbDesktop
                 if (chosen == null)
                     return;
 
-                var iconFile = IconStore.Save(package, chosen);
+                // The identity serial, not the transport: the icon has to stay findable
+                // after the same phone comes back on a different address.
+                var iconFile = IconStore.Save(package, serial, chosen);
                 if (iconFile == null)
                 {
                     await UiThread.RunAsync(() =>
@@ -880,6 +920,10 @@ namespace AdbDesktop
                         // from devices that are already added.
                         // Lands on the desktop currently on screen, whichever that is.
                         Desktop.Add(package, displayName, iconFile, chosen, serial);
+
+                        // Gives the fresh icon its device label and number straight away,
+                        // rather than leaving it unmarked until the next device change.
+                        Desktop.ApplyDeviceStates(_registry.Added.ToList());
                     }
                 });
             }

@@ -101,6 +101,19 @@ namespace AdbDesktop
         public string NumberText => _number > 0 ? _number.ToString() : string.Empty;
 
         /// <summary>
+        /// This device's colour, and whether to draw it. The taskbar entry and the
+        /// connection panel row are both legends for the marker on the unified desktop:
+        /// they are how you know which colour is which phone.
+        /// </summary>
+        public System.Windows.Media.Brush? DeviceBrush => DeviceColours.BrushFor(Serial);
+
+        public bool ShowDeviceColour =>
+            string.Equals(App.Config.Icons.DeviceMarker, DeviceMarkers.Colour, StringComparison.Ordinal);
+
+        /// <summary>Re-reads the marker setting after it is changed in Settings.</summary>
+        public void RaiseMarkerChanged() => RaisePropertyChanged(nameof(ShowDeviceColour));
+
+        /// <summary>
         /// What the taskbar shows. Normally the model; gains a suffix only when another
         /// connected device reports the same model.
         /// </summary>

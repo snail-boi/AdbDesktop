@@ -53,6 +53,19 @@ namespace AdbDesktop
         public bool CanRemove => _isAdded;
 
         /// <summary>
+        /// The device's colour, hashed from its serial -- the same one its icons carry on
+        /// the unified desktop. This row is the legend for that, which is why it is only
+        /// drawn while the colour marker is the one in use.
+        /// </summary>
+        public System.Windows.Media.Brush? DeviceBrush => DeviceColours.BrushFor(Serial);
+
+        public bool ShowDeviceColour =>
+            string.Equals(App.Config.Icons.DeviceMarker, DeviceMarkers.Colour, StringComparison.Ordinal);
+
+        /// <summary>Re-reads the marker setting after it is changed in Settings.</summary>
+        public void RefreshMarker() => RaisePropertyChanged(nameof(ShowDeviceColour));
+
+        /// <summary>
         /// Re-add this device automatically whenever it comes online. Per device, so
         /// marking one phone a fixture does not silently adopt every other phone that
         /// gets plugged into this PC.
@@ -207,6 +220,16 @@ namespace AdbDesktop
         }
 
         public bool HasNoDevices => Devices.Count == 0;
+
+        /// <summary>
+        /// Shows or hides the colour underlines after the marker setting changes, so the
+        /// legend appears without waiting for the next device poll.
+        /// </summary>
+        public void RefreshDeviceMarkers()
+        {
+            foreach (var device in Devices)
+                device.RefreshMarker();
+        }
 
         // ---------- device listing ----------
 

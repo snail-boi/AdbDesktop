@@ -105,14 +105,36 @@
                     </Border.ContextMenu>
 
                     <StackPanel VerticalAlignment="Center">
-                        <Border Width="56" Height="56" CornerRadius="13"
+                        <!-- Size, shape and background all come off the icon settings;
+                             the icon view models read them so the template can bind. -->
+                        <Border Width="56" Height="56"
+                                CornerRadius="{Binding TileCorner}"
                                 HorizontalAlignment="Center"
-                                Background="#1E1E24">
+                                RenderOptions.BitmapScalingMode="HighQuality">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="#1E1E24"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ShowTileBackground}" Value="False">
+                                            <Setter Property="Background" Value="Transparent"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
                             <Grid>
-                                <Image Source="{Binding Image}"
-                                       Width="52" Height="52"
-                                       RenderOptions.BitmapScalingMode="HighQuality"
-                                       Visibility="{Binding Image, Converter={StaticResource NullToVis}}"/>
+                                <!--
+                                  An ImageBrush rather than an Image: the corner radius
+                                  clips a brush, so artwork scaled up to the edges cannot
+                                  spill out of a round tile. DisplayImage, not Image, so it
+                                  greys itself out when the owning device is not connected.
+                                -->
+                                <Border CornerRadius="{Binding TileCorner}"
+                                        Margin="{Binding IconInset}"
+                                        Visibility="{Binding DisplayImage, Converter={StaticResource NullToVis}}">
+                                    <Border.Background>
+                                        <ImageBrush ImageSource="{Binding DisplayImage}" Stretch="Uniform"/>
+                                    </Border.Background>
+                                </Border>
                                 <!-- placeholder when the cached PNG went missing -->
                                 <TextBlock Text="?" FontSize="22"
                                            Foreground="{StaticResource MutedTextBrush}"
@@ -121,14 +143,57 @@
                                         <Style TargetType="TextBlock">
                                             <Setter Property="Visibility" Value="Collapsed"/>
                                             <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Image}" Value="{x:Null}">
+                                                <DataTrigger Binding="{Binding DisplayImage}" Value="{x:Null}">
                                                     <Setter Property="Visibility" Value="Visible"/>
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
                                     </TextBlock.Style>
                                 </TextBlock>
+
+                                <!--
+                                  Device badge: the same number the taskbar gives the
+                                  device. Overhangs the tile deliberately so it reads as a
+                                  badge rather than as part of the artwork.
+                                -->
+                                <Border Width="18" Height="18" CornerRadius="9"
+                                        HorizontalAlignment="Right" VerticalAlignment="Top"
+                                        Margin="0,-5,-5,0"
+                                        Background="#E6101014"
+                                        BorderBrush="#66FFFFFF" BorderThickness="1"
+                                        Visibility="{Binding ShowDeviceBadge,
+                                                             Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{Binding DeviceNumberText}"
+                                               FontSize="10" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextBrush}"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"/>
+                                </Border>
                             </Grid>
+                        </Border>
+
+                        <!--
+                          Device colour: hashed from the serial, the same colour the
+                          connection panel underlines that device with. Held (Hidden, not
+                          Collapsed) for icons that have no colour while the marker is on,
+                          so captions stay aligned across the desktop.
+                        -->
+                        <Border Width="28" Height="3" CornerRadius="1.5"
+                                Margin="0,5,0,0" HorizontalAlignment="Center"
+                                Background="{Binding DeviceBrush}">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ReserveColourBar}" Value="True">
+                                            <Setter Property="Visibility" Value="Hidden"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding ShowDeviceColour}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
                         </Border>
 
                         <Grid Margin="4,7,4,0" MaxWidth="88">
@@ -170,6 +235,11 @@
                                 <Trigger Property="IsMouseOver" Value="True">
                                     <Setter Property="Background" Value="#16FFFFFF"/>
                                 </Trigger>
+                                <!-- Device gone: the icon stays put but reads as unavailable,
+                                     matching the notice a click on it puts up. -->
+                                <DataTrigger Binding="{Binding IsDeviceConnected}" Value="False">
+                                    <Setter Property="Opacity" Value="0.45"/>
+                                </DataTrigger>
                                 <DataTrigger Binding="{Binding IsDragging}" Value="True">
                                     <Setter Property="Opacity" Value="0.75"/>
                                     <Setter Property="Background" Value="#22FFFFFF"/>

@@ -214,6 +214,91 @@ namespace AdbDesktop
             RaisePropertyChanged(nameof(WallpaperFit));
         }
 
+        // ---------- icons ----------
+
+        /*
+         * Backed straight by the config, like the taskbar settings: there is one desktop
+         * on screen and it is repainted as each option changes, so there is nothing to
+         * apply or revert.
+         */
+
+        private static IconsConfig IconCfg => App.Config.Icons;
+
+        public IReadOnlyList<string> IconShapeNames => IconShapes.All;
+
+        public bool IconBackground
+        {
+            get => IconCfg.ShowBackground;
+            set => SetIconOption(() => IconCfg.ShowBackground = value, IconCfg.ShowBackground == value,
+                nameof(IconBackground));
+        }
+
+        public bool ScaleIconsToFit
+        {
+            get => IconCfg.ScaleToFit;
+            set => SetIconOption(() => IconCfg.ScaleToFit = value, IconCfg.ScaleToFit == value,
+                nameof(ScaleIconsToFit));
+        }
+
+        public string IconShape
+        {
+            get => IconCfg.Shape;
+            set
+            {
+                if (!IconShapes.IsKnown(value))
+                    return;
+
+                SetIconOption(() => IconCfg.Shape = value,
+                    string.Equals(IconCfg.Shape, value, StringComparison.Ordinal), nameof(IconShape));
+            }
+        }
+
+        /// <summary>
+        /// How an icon says which device it runs on. Unified desktop only -- a device's
+        /// own desktop already answers the question, so the setting says so rather than
+        /// quietly doing nothing there.
+        /// </summary>
+        public IReadOnlyList<string> DeviceMarkerNames => DeviceMarkers.All;
+
+        public string DeviceMarker
+        {
+            get => IconCfg.DeviceMarker;
+            set
+            {
+                if (!DeviceMarkers.IsKnown(value))
+                    return;
+
+                SetIconOption(() => IconCfg.DeviceMarker = value,
+                    string.Equals(IconCfg.DeviceMarker, value, StringComparison.Ordinal),
+                    nameof(DeviceMarker));
+
+                RaisePropertyChanged(nameof(IsColourMarker));
+            }
+        }
+
+        /// <summary>Drives the "this is what the colours mean" note under the dropdown.</summary>
+        public bool IsColourMarker =>
+            string.Equals(IconCfg.DeviceMarker, DeviceMarkers.Colour, StringComparison.Ordinal);
+
+        /// <summary>
+        /// Raised after any icon setting changes. The shell owns everything that reads
+        /// them -- the desktop, the taskbar and the connection panel -- so it does the
+        /// repainting rather than this window reaching into three places itself.
+        /// </summary>
+        public event Action? IconSettingsChanged;
+
+        private void SetIconOption(Action apply, bool unchanged, string name)
+        {
+            if (unchanged)
+                return;
+
+            apply();
+            App.SaveConfig();
+            RaisePropertyChanged(name);
+
+            IconSettingsChanged?.Invoke();
+        }
+
         // ---------- advanced ----------
 
         public string DataFolder => AppPaths.DataRoot;

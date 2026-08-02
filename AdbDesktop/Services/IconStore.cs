@@ -1,5 +1,7 @@
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Windows.Media.Imaging;
 
 namespace AdbDesktop
@@ -12,8 +14,13 @@ namespace AdbDesktop
     /// </summary>
     internal static class IconStore
     {
-        /// <summary>Saves a decoded image as the icon for a package. Returns the filename.</summary>
-        public static string? Save(string package, BitmapSource image)
+        /// <summary>
+        /// Saves a decoded image as the icon for one app on one device. Returns the
+        /// filename. The same package on two phones is two icons, so the device serial is
+        /// part of the name -- keying on the package alone made them share a single file,
+        /// where re-iconning one silently changed the other.
+        /// </summary>
+        public static string? Save(string package, string deviceSerial, BitmapSource image)
         {
             if (string.IsNullOrWhiteSpace(package) || image == null)
                 return null;
@@ -22,7 +29,7 @@ namespace AdbDesktop
             {
                 Directory.CreateDirectory(AppPaths.IconsDir);
 
-                var fileName = Sanitize(package) + ".png";
+                var fileName = BuildFileName(package, deviceSerial);
                 var fullPath = Path.Combine(AppPaths.IconsDir, fileName);
 
                 var encoder = new PngBitmapEncoder();
@@ -36,7 +43,7 @@ namespace AdbDesktop
                     File.WriteAllBytes(fullPath, buffer.ToArray());
                 }
 
-                Debugger.show($"[ICON] Saved icon for {package} -> {fileName}");
+                Debugger.show($"[ICON] Saved icon for {package} on '{deviceSerial}' -> {fileName}");
                 return fileName;
             }
             catch (Exception ex)
@@ -112,6 +119,22 @@ namespace AdbDesktop
             {
                 Debugger.show($"[ICON] Could not delete {path}: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// "com.example.app-1a2b3c4d5e6f.png". The package stays in front so the cache is
+        /// still readable by eye; the hash of package + serial is what actually keeps two
+        /// phones' copies of the same app apart. Deterministic, so re-iconning overwrites
+        /// that one file rather than leaving orphans behind.
+        /// </summary>
+        private static string BuildFileName(string package, string deviceSerial)
+        {
+            // Length-prefixed so a package ending in the separator cannot collide with a
+            // serial starting with it.
+            var key = $"{package.Length}:{package}|{deviceSerial ?? string.Empty}";
+            var hash = SHA256.HashData(Encoding.UTF8.GetBytes(key));
+
+            return $"{Sanitize(package)}-{Convert.ToHexString(hash, 0, 6).ToLowerInvariant()}.png";
         }
 
         private static string Sanitize(string package)

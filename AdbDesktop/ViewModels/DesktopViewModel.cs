@@ -81,6 +81,7 @@ namespace AdbDesktop
                     Caption = stored.Caption,
                     IconFile = stored.IconFile,
                     DeviceSerial = stored.DeviceSerial,
+                    IsUnifiedDesktop = IsUnified,
                     Col = stored.Col,
                     Row = stored.Row,
                 };
@@ -115,6 +116,10 @@ namespace AdbDesktop
 
                 icon.IsDeviceConnected = device != null;
 
+                // The badge shows the same number as the taskbar's device box, so it
+                // follows the live numbering rather than keeping a stale one.
+                icon.DeviceNumber = device?.Number ?? 0;
+
                 if (device != null)
                 {
                     icon.DeviceLabel = device.Label;
@@ -132,6 +137,17 @@ namespace AdbDesktop
                         icon.DeviceLabel = known!.Model;
                 }
             }
+        }
+
+        /// <summary>
+        /// Re-reads the global icon settings on every icon on screen. Icons on the other
+        /// desktops pick the change up when they are next loaded, since they read the same
+        /// settings when their view models are built.
+        /// </summary>
+        public void RefreshIconAppearance()
+        {
+            foreach (var icon in Icons)
+                icon.RefreshAppearance();
         }
 
         // ---------- built-ins ----------
@@ -163,7 +179,8 @@ namespace AdbDesktop
             {
                 Package = BuiltInApps.SettingsPackage,
                 Caption = BuiltInApps.SettingsCaption,
-                Image = BuiltInApps.SettingsIcon
+                Image = BuiltInApps.SettingsIcon,
+                IsUnifiedDesktop = IsUnified
             };
 
             var (col, row) = FindFreeCell(settings);
@@ -333,7 +350,8 @@ namespace AdbDesktop
                 Caption = caption,
                 IconFile = iconFile,
                 Image = image,
-                DeviceSerial = deviceSerial
+                DeviceSerial = deviceSerial,
+                IsUnifiedDesktop = IsUnified
             };
 
             var (col, row) = FindFreeCell(icon);

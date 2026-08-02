@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace AdbDesktop
@@ -156,12 +157,87 @@ namespace AdbDesktop
         public string DateFormat { get; set; } = "ddd dd/MM";
     }
 
+    /// <summary>
+    /// The tile shapes an icon can take. Names are what is written to the config, so they
+    /// are spelled out here rather than being an enum -- a hand-edited or older file with
+    /// an unknown shape falls back instead of failing to parse.
+    /// </summary>
+    public static class IconShapes
+    {
+        public const string Square = "Square";
+        public const string Circle = "Circle";
+        public const string Squircle = "Squircle";
+
+        public static readonly IReadOnlyList<string> All = new[] { Square, Circle, Squircle };
+
+        public static bool IsKnown(string? shape) =>
+            All.Any(s => string.Equals(s, shape, StringComparison.Ordinal));
+
+        /// <summary>
+        /// Corner radius for a tile of the given size. The squircle is a rounded rectangle
+        /// at roughly the curve Android and iOS use, not a true superellipse -- close
+        /// enough at 56px, and it stays a Border rather than becoming a clip geometry.
+        /// </summary>
+        public static double RadiusFor(string? shape, double size) => shape switch
+        {
+            Square => 0,
+            Circle => size / 2,
+            _ => size * 0.23,
+        };
+    }
+
+    /// <summary>
+    /// How an icon says which device it runs on. Only ever drawn on the unified desktop:
+    /// a device's own desktop answers the question by existing, so a marker there would
+    /// be noise on every icon at once.
+    /// </summary>
+    public static class DeviceMarkers
+    {
+        public const string None = "None";
+
+        /// <summary>A bar under the icon in the device's colour, hashed from its serial.</summary>
+        public const string Colour = "Colour";
+
+        /// <summary>The device's number, as a small badge on the icon.</summary>
+        public const string Badge = "Badge";
+
+        public static readonly IReadOnlyList<string> All = new[] { None, Colour, Badge };
+
+        public static bool IsKnown(string? marker) =>
+            All.Any(m => string.Equals(m, marker, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// How desktop icons are drawn. Global rather than per desktop, for the same reason
+    /// the taskbar is: this is the shell's look, and having icons change shape when you
+    /// switch desktops would be disorienting.
+    /// </summary>
+    public class IconsConfig
+    {
+        /// <summary>One of <see cref="DeviceMarkers"/>.</summary>
+        public string DeviceMarker { get; set; } = DeviceMarkers.None;
+
+        /// <summary>The tile behind the artwork. Off leaves the icon on the wallpaper.</summary>
+        public bool ShowBackground { get; set; } = true;
+
+        /// <summary>
+        /// Crop the transparent margin off the artwork and let what is left fill the tile.
+        /// Android icons are often drawn small inside a large canvas, which makes them
+        /// look undersized next to ones drawn edge to edge.
+        /// </summary>
+        public bool ScaleToFit { get; set; }
+
+        /// <summary>One of <see cref="IconShapes"/>.</summary>
+        public string Shape { get; set; } = IconShapes.Squircle;
+    }
+
     public class AdbDesktopConfig
     {
         public PathsConfig Paths { get; set; } = new();
         public DeviceConfig Device { get; set; } = new();
         public DesktopConfig Desktop { get; set; } = new();
         public TaskbarConfig Taskbar { get; set; } = new();
+        public IconsConfig Icons { get; set; } = new();
     }
 
     /// <summary>
@@ -218,6 +294,13 @@ namespace AdbDesktop
             config.Device ??= new DeviceConfig();
             config.Desktop ??= new DesktopConfig();
             config.Taskbar ??= new TaskbarConfig();
+            config.Icons ??= new IconsConfig();
+
+            if (!IconShapes.IsKnown(config.Icons.Shape))
+                config.Icons.Shape = IconShapes.Squircle;
+
+            if (!DeviceMarkers.IsKnown(config.Icons.DeviceMarker))
+                config.Icons.DeviceMarker = DeviceMarkers.None;
 
             if (string.IsNullOrWhiteSpace(config.Taskbar.TimeFormat))
                 config.Taskbar.TimeFormat = "t";

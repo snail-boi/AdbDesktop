@@ -124,6 +124,17 @@
                                     <TextBlock Text="{Binding Title}" FontSize="12.5"/>
                                     <TextBlock Text="{Binding Detail}" FontSize="10.5"
                                                Foreground="{StaticResource MutedTextBrush}" Margin="0,1,0,0"/>
+
+                                    <!--
+                                      The legend for the colour marker: this device's icons
+                                      carry the same colour on the unified desktop. Only
+                                      drawn while that marker is the one in use.
+                                    -->
+                                    <Border Height="3" CornerRadius="1.5" Margin="0,5,0,0"
+                                            HorizontalAlignment="Left" Width="52"
+                                            Background="{Binding DeviceBrush}"
+                                            Visibility="{Binding ShowDeviceColour,
+                                                                 Converter={StaticResource BoolToVis}}"/>
                                 </StackPanel>
 
                                 <!--
