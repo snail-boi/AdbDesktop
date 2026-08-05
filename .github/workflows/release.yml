@@ -17,6 +17,12 @@ jobs:
   build:
     runs-on: windows-latest
 
+    # Needed by the Create GitHub Release step -- without it GITHUB_TOKEN falls back
+    # to the repo default (read-only here) and the release API returns
+    # "Resource not accessible by integration".
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
