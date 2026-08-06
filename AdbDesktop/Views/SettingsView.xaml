@@ -272,9 +272,13 @@
 
                 <!-- ===== other ===== -->
                 <StackPanel Visibility="{Binding IsOther, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Text="Other" Style="{StaticResource SectionHeadingStyle}"/>
-                    <TextBlock Style="{StaticResource EmptyTabStyle}"
-                               Text="Nothing to configure here yet."/>
+                    <TextBlock Text="Getting started" Style="{StaticResource SectionHeadingStyle}"/>
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="0,0,0,12"
+                               Text="The guide that opens the first time adbDesktop runs: connecting a phone over USB or wireless debugging, adding it to the desktop, and what putting an app on the desktop actually does."/>
+                    <Button Content="Show the welcome guide"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Padding="14,7" HorizontalAlignment="Left"
+                            Command="{Binding ShowWelcomeCommand}"/>
                 </StackPanel>
 
                 <!-- ===== advanced ===== -->

@@ -41,7 +41,18 @@ namespace AdbDesktop
             OpenDataFolderCommand = new RelayCommand(OpenDataFolder);
             ApplyWallpaperToAllCommand = new RelayCommand(ApplyWallpaperToAll);
             CheckForUpdatesCommand = new RelayCommand(() => _ = CheckForUpdatesAsync(), () => !_isCheckingUpdate);
+            ShowWelcomeCommand = new RelayCommand(() => WelcomeRequested?.Invoke());
         }
+
+        // ---------- first-run guide ----------
+
+        /// <summary>
+        /// Asks for the welcome guide again. The shell owns it -- it is drawn over the
+        /// whole desktop, not inside this window -- so this only raises the request.
+        /// </summary>
+        public event Action? WelcomeRequested;
+
+        public RelayCommand ShowWelcomeCommand { get; }
 
         // ---------- update ----------
 

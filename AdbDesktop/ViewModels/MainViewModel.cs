@@ -31,6 +31,8 @@ namespace AdbDesktop
         private string _noticeTitle = string.Empty;
         private string _noticeMessage = string.Empty;
 
+        private bool _isWelcomeOpen;
+
         private bool _isChooseDeviceOpen;
         private string _chooseDeviceMessage = string.Empty;
         private TaskCompletionSource<DeviceInfo?>? _chooseTcs;
@@ -44,6 +46,7 @@ namespace AdbDesktop
         public WindowManagerViewModel WindowManager { get; } = new();
         public TaskbarViewModel Taskbar { get; } = new();
         public AudioLinkViewModel Audio { get; } = new();
+        public WelcomeViewModel Welcome { get; } = new();
 
         /// <summary>Placeholder: the notification centre is a later milestone.</summary>
         public RelayCommand<DeviceInfo> DeviceNotificationsCommand { get; }
@@ -100,8 +103,11 @@ namespace AdbDesktop
             {
                 var settings = new SettingsViewModel(Desktop, Taskbar);
                 settings.IconSettingsChanged += OnIconSettingsChanged;
+                settings.WelcomeRequested += ShowWelcome;
                 return settings;
             };
+
+            Welcome.Finished += CloseWelcome;
 
             NavBackCommand = new RelayCommand(() => NavPlaceholder("back"));
             NavHomeCommand = new RelayCommand(() => NavPlaceholder("home"));
@@ -176,6 +182,11 @@ namespace AdbDesktop
             OnDevicesChanged();
 
             _registry.Start();
+
+            // Last, so the guide opens over a shell that has already settled rather than
+            // over one still painting itself.
+            if (!App.Config.WelcomeSeen)
+                ShowWelcome();
         }
 
         /// <summary>Called by the WM_DEVICECHANGE hook so USB hot-plug registers instantly.</summary>
@@ -335,6 +346,45 @@ namespace AdbDesktop
             tcs?.TrySetResult(device);
         }
 
+        // ---------- first-run guide ----------
+
+        public bool IsWelcomeOpen
+        {
+            get => _isWelcomeOpen;
+            private set => Set(ref _isWelcomeOpen, value);
+        }
+
+        /// <summary>
+        /// Opens the guide at page one. Called once on a fresh config, and on demand from
+        /// Settings.
+        /// </summary>
+        public void ShowWelcome()
+        {
+            Welcome.Reset();
+
+            // It covers the surface, so nothing else should be up behind it.
+            IsSearchOpen = false;
+            IsConnectionOpen = false;
+
+            IsWelcomeOpen = true;
+        }
+
+        /// <summary>
+        /// Closes it and records that it has been seen -- however it was closed. Backing
+        /// out of the guide is an answer, so it must not reappear on the next launch;
+        /// Settings is where it is reopened from.
+        /// </summary>
+        private void CloseWelcome()
+        {
+            IsWelcomeOpen = false;
+
+            if (App.Config.WelcomeSeen)
+                return;
+
+            App.Config.WelcomeSeen = true;
+            App.SaveConfig();
+        }
+
         public void ShowNotice(string title, string message)
         {
             NoticeTitle = title;
@@ -392,6 +442,7 @@ namespace AdbDesktop
         /// <summary>Closes the topmost inline overlay. Bound to Escape.</summary>
         public bool DismissTopOverlay()
         {
+            if (IsWelcomeOpen) { CloseWelcome(); return true; }
             if (IsNoticeOpen) { IsNoticeOpen = false; return true; }
             if (IsIconPickerOpen) { ResolvePick(null); return true; }
             if (IsConfirmOpen) { ResolveConfirm(false); return true; }

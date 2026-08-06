@@ -233,6 +233,17 @@ namespace AdbDesktop
 
     public class AdbDesktopConfig
     {
+        /// <summary>
+        /// The first-run guide has been through once. Top level rather than inside one of
+        /// the sections below, because it is about the app as a whole rather than about
+        /// devices, desktops or chrome -- and a fresh config file being all-defaults is
+        /// exactly what "first run" means.
+        ///
+        /// Set when the guide is closed however it is closed, so backing out of it does
+        /// not bring it back on the next launch. Settings can reopen it on demand.
+        /// </summary>
+        public bool WelcomeSeen { get; set; }
+
         public PathsConfig Paths { get; set; } = new();
         public DeviceConfig Device { get; set; } = new();
         public DesktopConfig Desktop { get; set; } = new();

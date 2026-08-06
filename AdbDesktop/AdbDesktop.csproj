@@ -15,7 +15,7 @@
       The installer reads this off the built exe (GetVersionNumbersString), so it is the
       single place a release is numbered.
     -->
-    <Version>0.1.0</Version>
+    <Version>1.0.0</Version>
     <Company>Snail</Company>
     <Product>AdbDesktop</Product>
 

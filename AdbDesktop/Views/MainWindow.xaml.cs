@@ -262,7 +262,8 @@ namespace AdbDesktop
         private AppWindowViewModel? KeyboardTarget()
         {
             if (_vm.IsSearchOpen || _vm.IsConnectionOpen || _vm.IsConfirmOpen
-                || _vm.IsNoticeOpen || _vm.IsIconPickerOpen || _vm.IsBusy)
+                || _vm.IsNoticeOpen || _vm.IsIconPickerOpen || _vm.IsBusy
+                || _vm.IsWelcomeOpen)
                 return null;
 
             var window = _vm.WindowManager.Windows

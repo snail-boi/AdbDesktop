@@ -694,7 +694,7 @@
                     <TextBlock Text="{Binding Audio.PanelTitle}" FontSize="14"/>
                     <TextBlock FontSize="11.5" Foreground="{StaticResource MutedTextBrush}"
                                Margin="0,4,0,12" TextWrapping="Wrap"
-                               Text="Playing through this PC. Android captures audio device-wide, so this covers every window on that device — and only one device can be linked at a time."/>
+                               Text="Playing through this PC. Android captures audio device-wide, so this covers every window on that device, and only one device can be linked at a time."/>
 
                     <TextBlock Text="{Binding Audio.Status}" FontSize="11.5" Margin="0,0,0,10"
                                Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap"
@@ -889,6 +889,24 @@
                                  Background="{StaticResource SurfaceHighBrush}"
                                  Foreground="{StaticResource AccentBrush}" BorderThickness="0"/>
                 </StackPanel>
+            </Border>
+        </Grid>
+
+        <!--
+          ================= first-run guide =================
+          Last of the overlays, so it sits over anything else that might be up, but still
+          under the window controls: closing the app has to stay reachable.
+        -->
+        <Grid Background="#B0000000"
+              Visibility="{Binding IsWelcomeOpen, Converter={StaticResource BoolToVis}}">
+            <Border Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                    CornerRadius="12" Width="660"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="30" ShadowDepth="6" Opacity="0.6" Color="Black"/>
+                </Border.Effect>
+                <local:WelcomePanel DataContext="{Binding Welcome}"/>
             </Border>
         </Grid>
 
