@@ -105,6 +105,45 @@ namespace AdbDesktop
             }
         }
 
+        // ---------- advanced: resize delay ----------
+
+        /// <summary>
+        /// Typed in rather than chosen from a list: what works depends on the phone, and
+        /// only the person using it knows how theirs behaves.
+        /// </summary>
+        public int ResizeDelayMs
+        {
+            get => App.Config.Advanced.ResizeDelayMs;
+            set
+            {
+                var clamped = Math.Clamp(value, AdvancedConfig.MinResizeDelayMs,
+                                                AdvancedConfig.MaxResizeDelayMs);
+
+                if (App.Config.Advanced.ResizeDelayMs != clamped)
+                {
+                    App.Config.Advanced.ResizeDelayMs = clamped;
+                    App.SaveConfig();
+                }
+
+                // Raised even when the value did not change, so a typed number that was
+                // clamped snaps back in the box instead of sitting there looking accepted.
+                RaisePropertyChanged(nameof(ResizeDelayMs));
+                RaisePropertyChanged(nameof(IsResizeDelayLow));
+                RaisePropertyChanged(nameof(IsResizeDelayRisky));
+            }
+        }
+
+        public int MinResizeDelayMs => AdvancedConfig.MinResizeDelayMs;
+        public int MaxResizeDelayMs => AdvancedConfig.MaxResizeDelayMs;
+
+        /// <summary>Below the default, where the warning is worth showing.</summary>
+        public bool IsResizeDelayLow =>
+            App.Config.Advanced.ResizeDelayMs < AdvancedConfig.DefaultResizeDelayMs;
+
+        /// <summary>Low enough that falling over is the expected outcome, not a risk.</summary>
+        public bool IsResizeDelayRisky =>
+            App.Config.Advanced.ResizeDelayMs < AdvancedConfig.RiskyResizeDelayMs;
+
         public RelayCommand<string> SelectTabCommand { get; }
         public RelayCommand ChooseWallpaperCommand { get; }
         public RelayCommand ClearWallpaperCommand { get; }

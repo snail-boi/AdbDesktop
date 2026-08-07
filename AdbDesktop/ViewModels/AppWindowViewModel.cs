@@ -294,10 +294,12 @@ namespace AdbDesktop
             if (_session == null || !_session.IsOpen)
                 return;
 
-            _resizeDebounce ??= new DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(220),
-            };
+            _resizeDebounce ??= new DispatcherTimer();
+
+            // Re-read every time rather than at construction, so changing the setting
+            // takes effect on the next drag instead of the next launch.
+            _resizeDebounce.Interval =
+                TimeSpan.FromMilliseconds(App.Config.Advanced.ResizeDelayMs);
 
             _resizeDebounce.Tick -= OnResizeDebounceTick;
             _resizeDebounce.Tick += OnResizeDebounceTick;

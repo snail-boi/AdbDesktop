@@ -231,6 +231,41 @@ namespace AdbDesktop
         public string Shape { get; set; } = IconShapes.Squircle;
     }
 
+    /// <summary>
+    /// Knobs that can make things worse. Nothing here needs touching for normal use.
+    /// </summary>
+    public class AdvancedConfig
+    {
+        /// <summary>
+        /// How long a window must stop changing size before the new size is sent to the
+        /// device, in milliseconds.
+        ///
+        /// Not a cosmetic delay. Each size that goes out makes Android reconfigure the
+        /// virtual display and restart the encoder, and our decoder reopens against the
+        /// new stream -- so this is a rate limit on a genuinely expensive round trip,
+        /// not on a redraw. The window is not blank while it waits: the last frame is
+        /// stretched to the new size, which is why the delay is barely visible.
+        /// </summary>
+        public int ResizeDelayMs { get; set; } = DefaultResizeDelayMs;
+
+        public const int DefaultResizeDelayMs = 220;
+
+        /// <summary>
+        /// Bounds for <see cref="ResizeDelayMs"/>. Deliberately wide: what suits a given
+        /// phone is the user's call. The floor is 1 rather than 0 only because zero or
+        /// negative is not a delay at all -- it would leave the timer firing continuously.
+        /// </summary>
+        public const int MinResizeDelayMs = 1;
+        public const int MaxResizeDelayMs = 2000;
+
+        /// <summary>
+        /// Below this, resizes are issued faster than the device can finish one, so the
+        /// encoder-restart path never gets to settle. Worth a blunter warning than
+        /// "this may stutter".
+        /// </summary>
+        public const int RiskyResizeDelayMs = 50;
+    }
+
     public class AdbDesktopConfig
     {
         /// <summary>
@@ -249,6 +284,7 @@ namespace AdbDesktop
         public DesktopConfig Desktop { get; set; } = new();
         public TaskbarConfig Taskbar { get; set; } = new();
         public IconsConfig Icons { get; set; } = new();
+        public AdvancedConfig Advanced { get; set; } = new();
     }
 
     /// <summary>
@@ -306,6 +342,11 @@ namespace AdbDesktop
             config.Desktop ??= new DesktopConfig();
             config.Taskbar ??= new TaskbarConfig();
             config.Icons ??= new IconsConfig();
+            config.Advanced ??= new AdvancedConfig();
+
+            config.Advanced.ResizeDelayMs = Math.Clamp(config.Advanced.ResizeDelayMs,
+                                                       AdvancedConfig.MinResizeDelayMs,
+                                                       AdvancedConfig.MaxResizeDelayMs);
 
             if (!IconShapes.IsKnown(config.Icons.Shape))
                 config.Icons.Shape = IconShapes.Squircle;
