@@ -74,6 +74,7 @@ namespace AdbDesktop
             PreviewKeyUp += OnPreviewKeyUp;
             PreviewTextInput += OnTextInput;
             PreviewMouseMove += OnPreviewMouseMove;
+            MouseLeave += (_, _) => Windows.ConcealChrome();
         }
 
         /// <summary>
@@ -395,6 +396,13 @@ namespace AdbDesktop
 
         private void OnPreviewMouseMove(object sender, MouseEventArgs e)
         {
+            // A maximised app window auto-hides its title bar and needs the pointer's
+            // position to know when to show it again. It is fed from here, on the window
+            // and as a preview, because that is the only place the moves are guaranteed
+            // to arrive: further down they are lost to whichever overlay currently
+            // covers the top edge, and to whatever has captured the mouse.
+            Windows.UpdateChromeReveal(e.GetPosition(Windows));
+
             if (!_topBarShown)
                 return;
 

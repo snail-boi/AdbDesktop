@@ -118,24 +118,12 @@
                         </Grid.RowDefinitions>
 
                         <!--
-                          Reveal strip for a maximised window: approaching the top edge
-                          slides the title bar back in.
+                          A maximised window reveals its title bar by pointer position
+                          (UpdateChromeReveal), not by a hit-testable strip: the strip
+                          has to be thin to stay out of the app's way, and anything thin
+                          enough is also easy to miss and easy for another overlay to
+                          cover.
                         -->
-                        <Border Grid.Row="0" Grid.RowSpan="2" Panel.ZIndex="9"
-                                VerticalAlignment="Top" Height="6"
-                                Background="Transparent"
-                                MouseEnter="WindowChrome_MouseEnter">
-                            <Border.Style>
-                                <Style TargetType="Border">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsMaximized}" Value="True">
-                                            <Setter Property="Visibility" Value="Visible"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Border.Style>
-                        </Border>
 
                         <!-- ===== title bar ===== -->
                         <Border x:Name="TitleBar"
@@ -146,8 +134,7 @@
                                 MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"
                                 MouseMove="TitleBar_MouseMove"
                                 MouseLeftButtonUp="TitleBar_MouseLeftButtonUp"
-                                LostMouseCapture="TitleBar_LostMouseCapture"
-                                MouseLeave="TitleBar_MouseLeave">
+                                LostMouseCapture="TitleBar_LostMouseCapture">
                             <Border.Style>
                                 <Style TargetType="Border">
                                     <Setter Property="Visibility" Value="Visible"/>

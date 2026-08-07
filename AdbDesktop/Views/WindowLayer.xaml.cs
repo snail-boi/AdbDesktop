@@ -193,25 +193,58 @@ namespace AdbDesktop
         }
 
         // ---------- auto-hiding chrome on a maximised window ----------
+        //
+        // Driven by where the pointer is, sampled from MainWindow's PreviewMouseMove,
+        // rather than by MouseEnter on a thin strip at the top of the window. The strip
+        // was unreliable for two reasons that no amount of tuning fixes: it has to be a
+        // few pixels tall to stay out of the app's way, and it is at the very top of the
+        // shell, which is where every other overlay wants to be as well -- anything
+        // painted over it takes the hit test and the reveal simply never happens.
 
-        private void WindowChrome_MouseEnter(object sender, MouseEventArgs e)
-        {
-            var window = WindowOf(sender);
-            if (window is { IsMaximized: true })
-                window.IsChromeRevealed = true;
-        }
+        /// <summary>How close to the top the pointer must come for the bar to slide in.</summary>
+        private const double RevealZone = 14;
 
-        private void TitleBar_MouseLeave(object sender, MouseEventArgs e)
+        /// <summary>
+        /// How far it must drop for the bar to go away again. Deliberately below the bar
+        /// rather than equal to the reveal distance: with one threshold the bar flickers
+        /// while the pointer rests on the boundary, and it would retract while the
+        /// pointer is still on the buttons.
+        /// </summary>
+        private const double ConcealZone = AppWindowViewModel.TitleBarHeight + 22;
+
+        /// <summary>
+        /// Reveals or hides the title bar of the maximised window for a pointer at this
+        /// position, in this control's coordinates.
+        /// </summary>
+        public void UpdateChromeReveal(Point pointer)
         {
-            var window = WindowOf(sender);
-            if (window == null || !window.IsMaximized)
+            var window = Model?.Windows.FirstOrDefault(w => w.IsMaximized && !w.IsMinimized);
+            if (window == null)
                 return;
 
-            // Don't snatch the bar away mid-drag.
+            if (pointer.Y <= RevealZone)
+            {
+                window.IsChromeRevealed = true;
+                return;
+            }
+
+            // Don't snatch the bar away mid-drag: dragging it downwards is exactly how a
+            // maximised window is pulled loose, and the pointer leaves the zone at once.
             if (_dragging || Mouse.LeftButton == MouseButtonState.Pressed)
                 return;
 
-            window.IsChromeRevealed = false;
+            if (pointer.Y > ConcealZone)
+                window.IsChromeRevealed = false;
+        }
+
+        /// <summary>Hides the bar when the pointer leaves the shell altogether.</summary>
+        public void ConcealChrome()
+        {
+            if (_dragging)
+                return;
+
+            foreach (var w in Model?.Windows ?? Enumerable.Empty<AppWindowViewModel>())
+                w.IsChromeRevealed = false;
         }
 
         // ---------- input forwarding ----------

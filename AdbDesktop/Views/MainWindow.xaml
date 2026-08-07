@@ -1100,14 +1100,28 @@
           once it leaves.
         -->
         <!--
-          Invisible trigger strip pinned to the very top of the client area. Using a real
-          hit-testable element with MouseEnter is far more reliable than testing mouse
-          coordinates on every move.
+          Invisible trigger strip pinned to the very top of the client area.
+
+          Collapsed while immersive, and not merely ignored: a maximised app window
+          reveals its own title bar from the same few pixels, and this strip sits above
+          the window layer, so leaving it live would swallow both the approach and any
+          click landing on the top edge of that bar.
         -->
         <Border x:Name="TopHotZone"
                 VerticalAlignment="Top" Height="6"
                 Background="Transparent"
-                MouseEnter="TopHotZone_MouseEnter"/>
+                MouseEnter="TopHotZone_MouseEnter">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Visible"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding WindowManager.IsImmersive}" Value="True">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+        </Border>
 
         <Border x:Name="TopBar"
                 VerticalAlignment="Top" HorizontalAlignment="Right"
