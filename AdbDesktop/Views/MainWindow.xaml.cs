@@ -8,6 +8,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
+using System.Windows.Shell;
 
 namespace AdbDesktop
 {
@@ -74,8 +75,36 @@ namespace AdbDesktop
             PreviewKeyUp += OnPreviewKeyUp;
             PreviewTextInput += OnTextInput;
             PreviewMouseMove += OnPreviewMouseMove;
-            MouseLeave += (_, _) => Windows.ConcealChrome();
+            MouseLeave += (_, e) => Windows.PointerLeftShell(e.GetPosition(Windows));
+
+            StateChanged += (_, _) => SyncResizeBorder();
+            SyncResizeBorder();
         }
+
+        /// <summary>
+        /// Drops the resize border while maximised.
+        ///
+        /// The border makes its pixels non-client, and a non-client mouse movement raises
+        /// no WPF mouse event at all: no MouseEnter, no MouseMove, nothing. Both
+        /// auto-hiding bars live in exactly those pixels at the top of the screen, so
+        /// pushing the pointer into the top edge -- the whole gesture -- went unheard, and
+        /// the bars only appeared if the pointer came to rest just below the border. A
+        /// maximised window cannot be resized by its edges anyway, so the border is doing
+        /// nothing there but swallowing the input the feature depends on.
+        /// </summary>
+        private void SyncResizeBorder()
+        {
+            var chrome = WindowChrome.GetWindowChrome(this);
+            if (chrome == null)
+                return;
+
+            chrome.ResizeBorderThickness = WindowState == WindowState.Maximized
+                ? new Thickness(0)
+                : new Thickness(ResizeBorder);
+        }
+
+        /// <summary>Matches the ResizeBorderThickness declared on the window's chrome.</summary>
+        private const double ResizeBorder = 6;
 
         /// <summary>
         /// The hook goes on here rather than in Loaded: the window starts maximised, so

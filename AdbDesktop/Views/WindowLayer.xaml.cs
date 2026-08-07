@@ -237,9 +237,17 @@ namespace AdbDesktop
                 window.IsChromeRevealed = false;
         }
 
-        /// <summary>Hides the bar when the pointer leaves the shell altogether.</summary>
-        public void ConcealChrome()
+        /// <summary>
+        /// Hides the bar when the pointer leaves the shell -- unless it left over the top
+        /// edge, which is the one direction that must not count. Leaving upwards means the
+        /// pointer is at the very top of the screen, which is precisely where the bar is
+        /// being asked for; taking that as "gone" made it vanish exactly on arrival.
+        /// </summary>
+        public void PointerLeftShell(Point pointer)
         {
+            if (pointer.Y <= RevealZone)
+                return;
+
             if (_dragging)
                 return;
 

@@ -135,22 +135,83 @@
                                 MouseMove="TitleBar_MouseMove"
                                 MouseLeftButtonUp="TitleBar_MouseLeftButtonUp"
                                 LostMouseCapture="TitleBar_LostMouseCapture">
+                            <!--
+                              Declared here and not in a Setter: a transform in a Setter
+                              is one object shared by every window, so they would all
+                              slide together.
+                            -->
+                            <Border.RenderTransform>
+                                <TranslateTransform Y="0"/>
+                            </Border.RenderTransform>
+
                             <Border.Style>
                                 <Style TargetType="Border">
-                                    <Setter Property="Visibility" Value="Visible"/>
                                     <Style.Triggers>
-                                        <!-- maximised and not being approached: hidden -->
+                                        <!--
+                                          Maximised and not being approached: the bar
+                                          slides up out of the window instead of being
+                                          collapsed, so it retracts as visibly as it
+                                          arrives. It stays in the tree at zero opacity,
+                                          which is why hit testing is turned off
+                                          explicitly: an invisible bar must not swallow
+                                          taps meant for the app underneath.
+
+                                          Opacity and the offset are only ever set by
+                                          these storyboards. A Setter for either would be
+                                          overridden by the animation and never take
+                                          effect again, which is also why the maximised
+                                          bar's old Opacity="0.96" is gone.
+                                        -->
                                         <MultiDataTrigger>
                                             <MultiDataTrigger.Conditions>
                                                 <Condition Binding="{Binding IsMaximized}" Value="True"/>
                                                 <Condition Binding="{Binding IsChromeRevealed}" Value="False"/>
                                             </MultiDataTrigger.Conditions>
-                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Setter Property="IsHitTestVisible" Value="False"/>
+                                            <MultiDataTrigger.EnterActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation
+                                                            Storyboard.TargetProperty="Opacity"
+                                                            To="0" Duration="0:0:0.18">
+                                                            <DoubleAnimation.EasingFunction>
+                                                                <CubicEase EasingMode="EaseIn"/>
+                                                            </DoubleAnimation.EasingFunction>
+                                                        </DoubleAnimation>
+                                                        <DoubleAnimation
+                                                            Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                                            To="-34" Duration="0:0:0.18">
+                                                            <DoubleAnimation.EasingFunction>
+                                                                <CubicEase EasingMode="EaseIn"/>
+                                                            </DoubleAnimation.EasingFunction>
+                                                        </DoubleAnimation>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </MultiDataTrigger.EnterActions>
+                                            <MultiDataTrigger.ExitActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation
+                                                            Storyboard.TargetProperty="Opacity"
+                                                            To="1" Duration="0:0:0.14">
+                                                            <DoubleAnimation.EasingFunction>
+                                                                <CubicEase EasingMode="EaseOut"/>
+                                                            </DoubleAnimation.EasingFunction>
+                                                        </DoubleAnimation>
+                                                        <DoubleAnimation
+                                                            Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                                            To="0" Duration="0:0:0.14">
+                                                            <DoubleAnimation.EasingFunction>
+                                                                <CubicEase EasingMode="EaseOut"/>
+                                                            </DoubleAnimation.EasingFunction>
+                                                        </DoubleAnimation>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </MultiDataTrigger.ExitActions>
                                         </MultiDataTrigger>
                                         <!-- floating over content: square off the corners -->
                                         <DataTrigger Binding="{Binding IsMaximized}" Value="True">
                                             <Setter Property="CornerRadius" Value="0"/>
-                                            <Setter Property="Opacity" Value="0.96"/>
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding IsActive}" Value="False">
                                             <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
