@@ -92,11 +92,18 @@ struct scv_session {
     uint8_t *ready;
     uint8_t *front;
     /*
-     * A `front` that was replaced by a resize while the host still held it. Kept
+     * A buffer that was replaced by a resize while the host still held it. Kept
      * alive until scv_release_frame(), because the host is reading from it on
      * another thread.
      */
     uint8_t *retired;
+    /*
+     * The exact buffer handed out by scv_acquire_frame(). Tracked separately from
+     * `front`, because a resize reassigns `front` to a freshly allocated buffer
+     * while the host is still reading the old one -- after which `front` no longer
+     * says anything about what the host holds.
+     */
+    uint8_t *held;
     size_t buffer_size;
     bool has_new;
     bool front_held;
@@ -198,21 +205,33 @@ scv_realloc_buffers_locked(scv_session *s, uint32_t width, uint32_t height) {
     memset(b, 0, size);
     memset(c, 0, size);
 
-    av_free(s->scratch);
-    av_free(s->ready);
-
     /*
-     * The host may be reading `front` right now: it keeps the pointer between
+     * The host may be reading its buffer right now: it keeps the pointer between
      * scv_acquire_frame() and scv_release_frame(), and blits from it on another
-     * thread. Freeing it here is what corrupted the heap during a fast resize.
-     * A held buffer is retired instead and freed on release.
+     * thread. Freeing that is what corrupts the heap during a fast resize, so it
+     * is retired instead and freed on release.
+     *
+     * One hold can outlive several resizes, which is why the held buffer is
+     * matched by pointer rather than assumed to still be `front`. By the second
+     * resize it is not: `front` was reassigned by the first one, and freeing the
+     * previous retiree would free the buffer the host is reading.
      */
-    if (s->front_held) {
-        av_free(s->retired);   // at most one can ever be outstanding
-        s->retired = s->front;
-    } else {
+    uint8_t *held = s->front_held ? s->held : NULL;
+
+    if (s->scratch != held) {
+        av_free(s->scratch);
+    }
+    if (s->ready != held) {
+        av_free(s->ready);
+    }
+    if (s->front != held) {
         av_free(s->front);
     }
+    if (s->retired != held) {
+        av_free(s->retired);
+    }
+
+    s->retired = held;
 
     s->scratch = a;
     s->ready = b;
@@ -1007,6 +1026,7 @@ scv_acquire_frame(scv_session *s, const uint8_t **data, uint32_t *stride,
     s->ready = tmp;
     s->has_new = false;
     s->front_held = true;
+    s->held = s->front;   // what a resize must not free out from under the host
 
     *data = s->front;
     if (stride) {
@@ -1031,8 +1051,11 @@ scv_release_frame(scv_session *s) {
 
     sc_mutex_lock(&s->mutex);
     s->front_held = false;
+    s->held = NULL;
 
-    // Safe now: the host has finished reading the buffer a resize replaced.
+    // Safe now: the host has finished reading the buffer a resize replaced. Null
+    // unless a resize happened during the hold, in which case this is the only
+    // pointer left to it.
     av_free(s->retired);
     s->retired = NULL;
 

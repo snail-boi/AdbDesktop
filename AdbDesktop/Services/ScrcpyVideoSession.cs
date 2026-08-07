@@ -18,6 +18,18 @@ namespace AdbDesktop
     {
         private readonly ScrcpyVideoNative.EventCallback _eventCallback;
 
+        /// <summary>
+        /// Roots the callback for as long as native can still call it.
+        ///
+        /// A field alone is not enough. The field only lives as long as this object, and
+        /// this object becomes unreachable the moment AppWindowViewModel drops its
+        /// reference in StopMirroring -- while scv_close is still running on a background
+        /// thread and still raising events (StreamStopped, Disconnected) through the
+        /// function pointer. Collecting the delegate underneath that leaves native calling
+        /// into a stub that has been freed.
+        /// </summary>
+        private GCHandle _callbackHandle;
+
         private IntPtr _session;
         private WriteableBitmap? _bitmap;
         private int _bitmapWidth;
@@ -85,12 +97,18 @@ namespace AdbDesktop
             // size change via flex, not a rotation.
             settings.LockOrientation = 1;
 
+            // Rooted before the pointer is handed over, released only once scv_close has
+            // returned and native can no longer call it.
+            if (!_callbackHandle.IsAllocated)
+                _callbackHandle = GCHandle.Alloc(_eventCallback);
+
             settings.EventCallback = Marshal.GetFunctionPointerForDelegate(_eventCallback);
 
             _session = ScrcpyVideoNative.scv_open(ref settings, out var error);
             if (_session == IntPtr.Zero)
             {
                 Debugger.show($"[SCRCPY] scv_open failed for {package}: error={error}");
+                ReleaseCallback();
                 return false;
             }
 
@@ -271,7 +289,10 @@ namespace AdbDesktop
             _session = IntPtr.Zero;
 
             if (handle == IntPtr.Zero)
+            {
+                ReleaseCallback();
                 return;
+            }
 
             // scv_close blocks until every internal thread joins, which can take a
             // moment (it kills the device-side server), so keep it off the UI thread.
@@ -287,7 +308,20 @@ namespace AdbDesktop
                 {
                     Debugger.show("[SCRCPY] scv_close failed: " + ex.Message);
                 }
+                finally
+                {
+                    // Only now is native finished with the callback. Freeing it any
+                    // earlier -- including by simply letting this object go out of scope
+                    // -- leaves the teardown events calling a collected delegate.
+                    ReleaseCallback();
+                }
             });
+        }
+
+        private void ReleaseCallback()
+        {
+            if (_callbackHandle.IsAllocated)
+                _callbackHandle.Free();
         }
     }
 }
