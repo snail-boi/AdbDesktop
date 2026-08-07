@@ -15,6 +15,19 @@ namespace AdbDesktop
         private Point _dragOffset;
         private bool _dragging;
 
+        /// <summary>Pointer position when the drag began, for the pull-loose threshold.</summary>
+        private Point _dragStart;
+
+        /// <summary>
+        /// Set while dragging a tiled window that has not yet been pulled out of its
+        /// tile. Like Windows, a snapped window does not come loose the instant it is
+        /// touched -- the pointer has to travel first, so a click or a double-click on
+        /// the title bar leaves the tiling alone.
+        /// </summary>
+        private bool _dragPending;
+
+        private const double PullLooseDistance = 12;
+
         private WindowManagerViewModel? Model => DataContext as WindowManagerViewModel;
 
         public WindowLayer()
@@ -38,6 +51,10 @@ namespace AdbDesktop
             var window = WindowOf(sender);
             if (window != null && !window.IsActive)
                 Model?.Activate(window);
+
+            // Touching a window is an answer to "what goes in the gap?", even if the
+            // answer is "not now".
+            Model?.CloseSnapAssist();
         }
 
         // ---------- title bar drag ----------
@@ -55,14 +72,15 @@ namespace AdbDesktop
                 return;
             }
 
-            // A maximised window has nowhere to be dragged to.
-            if (window.IsMaximized)
-                return;
-
             _dragWindow = window;
             _dragging = true;
 
+            // A tiled or maximised window is dragged out of its tile rather than around
+            // the desktop; that only starts once the pointer has actually moved.
+            _dragPending = window.IsSnapped;
+
             var p = e.GetPosition(this);
+            _dragStart = p;
             _dragOffset = new Point(p.X - window.X, p.Y - window.Y);
 
             ((UIElement) sender).CaptureMouse();
@@ -75,12 +93,44 @@ namespace AdbDesktop
                 return;
 
             var p = e.GetPosition(this);
+
+            if (_dragPending)
+            {
+                if (Math.Abs(p.X - _dragStart.X) < PullLooseDistance
+                    && Math.Abs(p.Y - _dragStart.Y) < PullLooseDistance)
+                    return;
+
+                PullLoose(_dragWindow, p);
+                _dragPending = false;
+            }
+
             _dragWindow.X = p.X - _dragOffset.X;
             _dragWindow.Y = p.Y - _dragOffset.Y;
 
             // Clamped live rather than only on release: releasing outside the app (or
             // losing capture) would otherwise strand a window off-screen.
             Model?.ClampPosition(_dragWindow);
+
+            // Arm the snap the release would perform, and show where it would land.
+            Model?.ShowSnapPreview(Model.ZoneForPointer(p));
+        }
+
+        /// <summary>
+        /// Takes a window out of its tile mid-drag and hands it back its floating size,
+        /// keeping the same point of the title bar under the pointer. Without the ratio
+        /// the window would jump sideways the moment it shrank.
+        /// </summary>
+        private void PullLoose(AppWindowViewModel window, Point pointer)
+        {
+            var ratio = window.Width > 0
+                ? Math.Clamp((pointer.X - window.X) / window.Width, 0, 1)
+                : 0.5;
+
+            var grabY = Math.Clamp(pointer.Y - window.Y, 0, AppWindowViewModel.TitleBarHeight);
+
+            Model?.ApplySnap(window, SnapZone.None);
+
+            _dragOffset = new Point(ratio * window.Width, grabY);
         }
 
         private void TitleBar_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -88,13 +138,58 @@ namespace AdbDesktop
             if (!_dragging)
                 return;
 
+            // Cleared before the capture is released, because that release raises
+            // LostMouseCapture synchronously and it would otherwise cancel the drop.
+            var window = _dragWindow;
+
+            _dragWindow = null;
+            _dragging = false;
+            _dragPending = false;
+
+            var zone = Model?.PreviewZone ?? SnapZone.None;
+            Model?.HideSnapPreview();
+
+            if (window != null)
+            {
+                if (zone != SnapZone.None)
+                    Model?.ApplySnap(window, zone);
+                else
+                    Model?.ClampPosition(window);
+            }
+
             ((UIElement) sender).ReleaseMouseCapture();
+        }
+
+        /// <summary>
+        /// Losing capture (alt-tab, a modal appearing) has to end the drag as cleanly as
+        /// a button release would, or the next mouse move keeps dragging a window nobody
+        /// is holding.
+        /// </summary>
+        private void TitleBar_LostMouseCapture(object sender, MouseEventArgs e)
+        {
+            if (!_dragging)
+                return;
+
+            Model?.HideSnapPreview();
 
             if (_dragWindow != null)
                 Model?.ClampPosition(_dragWindow);
 
             _dragWindow = null;
             _dragging = false;
+            _dragPending = false;
+        }
+
+        // ---------- snap assist ----------
+
+        /// <summary>
+        /// Clicking the empty space around the candidates declines the offer, the same as
+        /// Escape. The tiles themselves are buttons and handle their own clicks.
+        /// </summary>
+        private void SnapAssistBackdrop_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            Model?.CloseSnapAssist();
+            e.Handled = true;
         }
 
         // ---------- auto-hiding chrome on a maximised window ----------
@@ -223,6 +318,12 @@ namespace AdbDesktop
             var window = WindowOf(thumb);
             if (window == null || window.IsMaximized)
                 return;
+
+            // Resizing a tiled window is the user taking its bounds back. The neighbours
+            // are not re-flowed to match -- it simply stops being tiled, at the size it
+            // has now, which is the one behaviour that cannot surprise anyone.
+            if (window.IsTiled)
+                Model?.ReleaseTile(window);
 
             var edge = thumb.Tag as string ?? string.Empty;
 

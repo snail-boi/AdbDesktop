@@ -233,6 +233,16 @@ namespace AdbDesktop
                 }
             }
 
+            // Tiling shortcuts come before forwarding, or the arrows would go to the
+            // device instead. Alt makes WPF report the real key as SystemKey.
+            var key = e.Key == Key.System ? e.SystemKey : e.Key;
+
+            if (TryTile(key))
+            {
+                e.Handled = true;
+                return;
+            }
+
             // With a focused app window and no overlay in the way, the keyboard belongs
             // to the device. Printable characters are deliberately left alone here and
             // handled by TextInput below, which copes with layouts, dead keys and IMEs.
@@ -252,23 +262,64 @@ namespace AdbDesktop
             }
         }
 
+        // ---------- tiling shortcuts ----------
+
+        /// <summary>
+        /// Windows-style tiling on the focused window. Win+Arrow is claimed by the real
+        /// Windows shell and never reaches an app, so the shortcut here is
+        /// Ctrl+Alt+Arrow; the behaviour it drives is the same.
+        /// </summary>
+        private bool TryTile(Key key)
+        {
+            const ModifierKeys combo = ModifierKeys.Control | ModifierKeys.Alt;
+
+            if ((Keyboard.Modifiers & combo) != combo)
+                return false;
+
+            var direction = key switch
+            {
+                Key.Left => TileDirection.Left,
+                Key.Right => TileDirection.Right,
+                Key.Up => TileDirection.Up,
+                Key.Down => TileDirection.Down,
+                _ => (TileDirection?) null,
+            };
+
+            if (direction == null)
+                return false;
+
+            var window = FocusedWindow();
+            if (window == null)
+                return false;
+
+            _vm.WindowManager.TileWithKeyboard(window, direction.Value);
+            return true;
+        }
+
         // ---------- keyboard forwarding ----------
 
         /// <summary>
-        /// The window keystrokes should go to: the active app window, but only when no
-        /// shell overlay is up (otherwise typing in the search box would also be typed
-        /// into the phone).
+        /// True while a shell overlay owns the keyboard, so that typing in the search box
+        /// is not also typed into the phone.
+        /// </summary>
+        private bool IsOverlayOpen =>
+            _vm.IsSearchOpen || _vm.IsConnectionOpen || _vm.IsConfirmOpen
+            || _vm.IsNoticeOpen || _vm.IsIconPickerOpen || _vm.IsBusy
+            || _vm.IsWelcomeOpen;
+
+        /// <summary>The focused app window, overlays permitting.</summary>
+        private AppWindowViewModel? FocusedWindow() =>
+            IsOverlayOpen
+                ? null
+                : _vm.WindowManager.Windows.FirstOrDefault(w => w.IsActive && !w.IsMinimized);
+
+        /// <summary>
+        /// The window keystrokes should go to: the focused one, but only if it has a live
+        /// session behind it -- the built-in Settings window is WPF content and has none.
         /// </summary>
         private AppWindowViewModel? KeyboardTarget()
         {
-            if (_vm.IsSearchOpen || _vm.IsConnectionOpen || _vm.IsConfirmOpen
-                || _vm.IsNoticeOpen || _vm.IsIconPickerOpen || _vm.IsBusy
-                || _vm.IsWelcomeOpen)
-                return null;
-
-            var window = _vm.WindowManager.Windows
-                .FirstOrDefault(w => w.IsActive && !w.IsMinimized);
-
+            var window = FocusedWindow();
             return window is { CanReceiveInput: true } ? window : null;
         }
 

@@ -43,6 +43,33 @@
             </Style.Triggers>
         </Style>
 
+        <!-- A candidate window in the snap-assist picker. -->
+        <Style x:Key="SnapAssistTileStyle" TargetType="Button">
+            <Setter Property="Margin" Value="8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Padding="8"
+                                CornerRadius="8"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderThickness="1"
+                                BorderBrush="{StaticResource LineBrush}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background"
+                                        Value="{StaticResource SurfaceHighBrush}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush"
+                                        Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Invisible drag handles for the 8 resize directions. -->
         <Style x:Key="ResizeThumbStyle" TargetType="Thumb">
             <Setter Property="Template">
@@ -55,6 +82,7 @@
         </Style>
     </UserControl.Resources>
 
+    <Grid>
     <ItemsControl x:Name="Host" ItemsSource="{Binding Windows}">
         <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
@@ -118,6 +146,7 @@
                                 MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"
                                 MouseMove="TitleBar_MouseMove"
                                 MouseLeftButtonUp="TitleBar_MouseLeftButtonUp"
+                                LostMouseCapture="TitleBar_LostMouseCapture"
                                 MouseLeave="TitleBar_MouseLeave">
                             <Border.Style>
                                 <Style TargetType="Border">
@@ -370,4 +399,135 @@
             </DataTemplate>
         </ItemsControl.ItemTemplate>
     </ItemsControl>
+
+    <!--
+      ===== snap preview =====
+
+      The ghost of where a dragged window would land. It sits above the windows rather
+      than below them: the window being dragged is under the pointer and would hide
+      most of it otherwise, which is the one moment the preview has to be readable.
+    -->
+    <Canvas IsHitTestVisible="False">
+        <Border Canvas.Left="{Binding PreviewX}"
+                Canvas.Top="{Binding PreviewY}"
+                Width="{Binding PreviewWidth}"
+                Height="{Binding PreviewHeight}"
+                CornerRadius="8"
+                BorderThickness="2"
+                BorderBrush="{StaticResource AccentBrush}"
+                Visibility="{Binding IsSnapPreviewVisible, Converter={StaticResource BoolToVis}}">
+            <Border.Background>
+                <SolidColorBrush Color="#4C8DFF" Opacity="0.18"/>
+            </Border.Background>
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSnapPreviewVisible}" Value="True">
+                            <DataTrigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                         From="0" To="1" Duration="0:0:0.12"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </DataTrigger.EnterActions>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+        </Border>
+    </Canvas>
+
+    <!--
+      ===== snap assist =====
+
+      Filling one half leaves the other empty, and what belongs there is nearly always
+      a window that is already open. The gap is offered as a picker over the empty
+      region; clicking the backdrop declines it.
+    -->
+    <Canvas Visibility="{Binding IsSnapAssistOpen, Converter={StaticResource BoolToVis}}">
+        <Border Canvas.Left="{Binding AssistX}"
+                Canvas.Top="{Binding AssistY}"
+                Width="{Binding AssistWidth}"
+                Height="{Binding AssistHeight}"
+                Background="#D6101014"
+                MouseLeftButtonDown="SnapAssistBackdrop_MouseDown">
+            <Grid Margin="18">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,0,0,14">
+                    <TextBlock Text="Snap another window here"
+                               FontSize="13.5" FontWeight="SemiBold"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="Or click anywhere to leave the space empty"
+                               FontSize="11" Opacity="0.7" Margin="0,4,0,0"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding SnapAssistCandidates}"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource SnapAssistTileStyle}"
+                                        Command="{Binding DataContext.SnapAssistPickCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}">
+                                    <StackPanel Width="176">
+                                        <!--
+                                          The live frame doubles as the thumbnail, so the
+                                          preview is of the app as it actually looks right
+                                          now. Windows with no frame yet (Settings, or one
+                                          still connecting) fall back to their icon.
+                                        -->
+                                        <Border Height="104" CornerRadius="5" ClipToBounds="True"
+                                                Background="#0E0E12">
+                                            <Grid>
+                                                <Image Source="{Binding Frame}"
+                                                       Stretch="Uniform"
+                                                       RenderOptions.BitmapScalingMode="LowQuality"
+                                                       Visibility="{Binding HasFrame,
+                                                                            Converter={StaticResource BoolToVis}}"/>
+                                                <Image Source="{Binding Icon}" Width="40" Height="40"
+                                                       RenderOptions.BitmapScalingMode="HighQuality"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center">
+                                                    <Image.Style>
+                                                        <Style TargetType="Image">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding HasFrame}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Image.Style>
+                                                </Image>
+                                            </Grid>
+                                        </Border>
+
+                                        <TextBlock Text="{Binding Title}" FontSize="12"
+                                                   Margin="2,8,2,0"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   HorizontalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+    </Canvas>
+    </Grid>
 </UserControl>

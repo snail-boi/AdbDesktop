@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Windows;
 
 namespace AdbDesktop
 {
@@ -52,6 +53,7 @@ namespace AdbDesktop
             MaximiseCommand = new RelayCommand<AppWindowViewModel>(ToggleMaximise);
             ActivateCommand = new RelayCommand<AppWindowViewModel>(Activate);
             TaskbarClickCommand = new RelayCommand<AppWindowViewModel>(TaskbarClick);
+            SnapAssistPickCommand = new RelayCommand<AppWindowViewModel>(FillFromSnapAssist);
         }
 
         public bool HasWindows => Windows.Count > 0;
@@ -64,11 +66,16 @@ namespace AdbDesktop
             _surfaceWidth = width;
             _surfaceHeight = height;
 
+            // A tile is a fraction of the surface, so every snapped window has to be
+            // re-laid-out rather than merely nudged back inside.
+            CloseSnapAssist();
+            HideSnapPreview();
+
             foreach (var w in Windows)
             {
-                if (w.IsMaximized)
+                if (w.IsSnapped)
                 {
-                    ApplyMaximisedBounds(w);
+                    ApplyZoneBounds(w);
                 }
                 else
                 {
@@ -92,6 +99,10 @@ namespace AdbDesktop
         /// </summary>
         public AppWindowViewModel Open(DesktopIconViewModel icon)
         {
+            // Whatever the assist was offering, a window arriving on the desktop answers
+            // the question for the user.
+            CloseSnapAssist();
+
             // A window mirrors the device that owns the app, which is not necessarily the
             // primary one. Built-in entries (AdbDesktop Settings) have no device at all.
             var serial = string.IsNullOrEmpty(icon.DeviceSerial) ? DeviceSerial : icon.DeviceSerial;
@@ -157,6 +168,10 @@ namespace AdbDesktop
             if (window == null || !Windows.Remove(window))
                 return;
 
+            // The window may be the one the assist was offering, or the one it was
+            // offering a gap next to; either way the offer is stale.
+            CloseSnapAssist();
+
             // Tears down the scrcpy session and, because vd_destroy_content is set,
             // the virtual display and the app running on it.
             window.StopMirroring();
@@ -210,6 +225,8 @@ namespace AdbDesktop
         {
             if (window == null) return;
 
+            CloseSnapAssist();
+
             window.IsMinimized = true;
             window.IsActive = false;
 
@@ -224,27 +241,8 @@ namespace AdbDesktop
         {
             if (window == null) return;
 
-            if (window.IsMaximized)
-            {
-                window.IsMaximized = false;
-                window.ApplyRestoreBounds();
-            }
-            else
-            {
-                window.SaveRestoreBounds();
-                window.IsMaximized = true;
-                ApplyMaximisedBounds(window);
-            }
-
+            ApplySnap(window, window.Snap == SnapZone.Full ? SnapZone.None : SnapZone.Full);
             Activate(window);
-        }
-
-        private void ApplyMaximisedBounds(AppWindowViewModel window)
-        {
-            window.X = 0;
-            window.Y = 0;
-            window.Width = _surfaceWidth;
-            window.Height = _surfaceHeight;
         }
 
         public void Activate(AppWindowViewModel? window)
@@ -277,6 +275,9 @@ namespace AdbDesktop
         /// <summary>Stops every session. Called when the shell shuts down.</summary>
         public void CloseAll()
         {
+            CloseSnapAssist();
+            HideSnapPreview();
+
             foreach (var w in Windows.ToList())
                 w.StopMirroring();
 
@@ -305,6 +306,362 @@ namespace AdbDesktop
 
             window.X = Math.Clamp(window.X, minX, maxX);
             window.Y = Math.Clamp(window.Y, 0, maxY);
+        }
+
+        // ---------- tiling ----------
+        //
+        // Windows' snap, on the shell's own surface: drag a window against an edge and it
+        // takes that half (a corner takes a quarter, the top edge maximises), or use the
+        // keyboard shortcuts. The desktop area is the "screen" here, so a tiled window
+        // stops above the taskbar exactly as a maximised one does.
+
+        /// <summary>How close the pointer must come to an edge for a drag to arm a snap.</summary>
+        private const double EdgeMargin = 24;
+
+        /// <summary>
+        /// How far along an edge counts as its corner, and so picks a quarter rather than
+        /// a half. Capped against the surface so it cannot swallow a whole small edge.
+        /// </summary>
+        private const double CornerMargin = 110;
+
+        /// <summary>
+        /// The zone a pointer at this position would snap to, in surface coordinates.
+        /// <see cref="SnapZone.None"/> means "nowhere near an edge, leave it floating".
+        /// </summary>
+        public SnapZone ZoneForPointer(Point p)
+        {
+            var corner = Math.Min(CornerMargin, Math.Min(_surfaceWidth, _surfaceHeight) / 3);
+
+            var nearTop = p.Y <= EdgeMargin;
+            var nearBottom = p.Y >= _surfaceHeight - EdgeMargin;
+
+            // Sides win over the top and bottom edges, so that sliding down the left edge
+            // never flickers through "maximise" on the way past the corner.
+            if (p.X <= EdgeMargin)
+            {
+                if (p.Y <= corner) return SnapZone.TopLeft;
+                if (p.Y >= _surfaceHeight - corner) return SnapZone.BottomLeft;
+                return SnapZone.Left;
+            }
+
+            if (p.X >= _surfaceWidth - EdgeMargin)
+            {
+                if (p.Y <= corner) return SnapZone.TopRight;
+                if (p.Y >= _surfaceHeight - corner) return SnapZone.BottomRight;
+                return SnapZone.Right;
+            }
+
+            if (nearTop)
+            {
+                if (p.X <= corner) return SnapZone.TopLeft;
+                if (p.X >= _surfaceWidth - corner) return SnapZone.TopRight;
+                return SnapZone.Full;
+            }
+
+            if (nearBottom)
+            {
+                if (p.X <= corner) return SnapZone.BottomLeft;
+                if (p.X >= _surfaceWidth - corner) return SnapZone.BottomRight;
+                // The middle of the bottom edge does nothing, as on Windows.
+            }
+
+            return SnapZone.None;
+        }
+
+        /// <summary>The rectangle a zone occupies. False for <see cref="SnapZone.None"/>.</summary>
+        public bool TryZoneBounds(SnapZone zone, out Rect bounds)
+        {
+            // Rounded so two windows sharing an edge meet on a whole pixel and leave no
+            // hairline of desktop showing between them.
+            var halfWidth = Math.Round(_surfaceWidth / 2);
+            var halfHeight = Math.Round(_surfaceHeight / 2);
+
+            bounds = zone switch
+            {
+                SnapZone.Full => new Rect(0, 0, _surfaceWidth, _surfaceHeight),
+                SnapZone.Left => new Rect(0, 0, halfWidth, _surfaceHeight),
+                SnapZone.Right => new Rect(halfWidth, 0, _surfaceWidth - halfWidth, _surfaceHeight),
+                SnapZone.TopLeft => new Rect(0, 0, halfWidth, halfHeight),
+                SnapZone.TopRight => new Rect(halfWidth, 0, _surfaceWidth - halfWidth, halfHeight),
+                SnapZone.BottomLeft => new Rect(0, halfHeight, halfWidth, _surfaceHeight - halfHeight),
+                SnapZone.BottomRight => new Rect(halfWidth, halfHeight,
+                                                 _surfaceWidth - halfWidth, _surfaceHeight - halfHeight),
+                _ => Rect.Empty,
+            };
+
+            return zone != SnapZone.None;
+        }
+
+        /// <summary>
+        /// Moves a window into a zone, or back out of one. The bounds a window returns to
+        /// are captured the first time it leaves the floating state, not on every hop
+        /// between zones, so snapping left then right then loose still gives back the size
+        /// the window had before any of it.
+        /// </summary>
+        public void ApplySnap(AppWindowViewModel? window, SnapZone zone)
+        {
+            if (window == null) return;
+
+            HideSnapPreview();
+
+            if (zone == SnapZone.None)
+            {
+                if (!window.IsSnapped) return;
+
+                window.Snap = SnapZone.None;
+                window.ApplyRestoreBounds();
+                ClampPosition(window);
+                CloseSnapAssist();
+                return;
+            }
+
+            if (!window.IsSnapped)
+                window.SaveRestoreBounds();
+
+            window.Snap = zone;
+            ApplyZoneBounds(window);
+
+            CloseSnapAssist();
+            OfferSnapAssist(window);
+        }
+
+        /// <summary>
+        /// Frees a tiled window where it stands, keeping its current bounds as the ones
+        /// it floats at. Used when the user resizes a tile: the size they just dragged out
+        /// is the size they want, not something to be restored away.
+        /// </summary>
+        public void ReleaseTile(AppWindowViewModel? window)
+        {
+            if (window is not { IsSnapped: true })
+                return;
+
+            window.Snap = SnapZone.None;
+            window.SaveRestoreBounds();
+            CloseSnapAssist();
+        }
+
+        private void ApplyZoneBounds(AppWindowViewModel window)
+        {
+            if (!TryZoneBounds(window.Snap, out var r))
+                return;
+
+            window.X = r.X;
+            window.Y = r.Y;
+            window.Width = r.Width;
+            window.Height = r.Height;
+        }
+
+        /// <summary>
+        /// Where an arrow shortcut takes a window from the zone it is in. Mirrors the
+        /// Win+Arrow behaviour: the first press snaps, further presses walk around the
+        /// halves and quarters, and coming back the way you came releases the window.
+        /// </summary>
+        public void TileWithKeyboard(AppWindowViewModel? window, TileDirection direction)
+        {
+            if (window == null) return;
+
+            Activate(window);
+
+            var zone = window.Snap;
+
+            switch (direction)
+            {
+                case TileDirection.Left:
+                    ApplySnap(window, zone switch
+                    {
+                        SnapZone.None or SnapZone.Full => SnapZone.Left,
+                        SnapZone.Right => SnapZone.None,
+                        SnapZone.TopRight => SnapZone.TopLeft,
+                        SnapZone.BottomRight => SnapZone.BottomLeft,
+                        _ => zone,
+                    });
+                    break;
+
+                case TileDirection.Right:
+                    ApplySnap(window, zone switch
+                    {
+                        SnapZone.None or SnapZone.Full => SnapZone.Right,
+                        SnapZone.Left => SnapZone.None,
+                        SnapZone.TopLeft => SnapZone.TopRight,
+                        SnapZone.BottomLeft => SnapZone.BottomRight,
+                        _ => zone,
+                    });
+                    break;
+
+                case TileDirection.Up:
+                    ApplySnap(window, zone switch
+                    {
+                        SnapZone.Left => SnapZone.TopLeft,
+                        SnapZone.Right => SnapZone.TopRight,
+                        SnapZone.BottomLeft => SnapZone.Left,
+                        SnapZone.BottomRight => SnapZone.Right,
+                        _ => SnapZone.Full,
+                    });
+                    break;
+
+                case TileDirection.Down:
+                    // Down out of a floating window is minimise, as on Windows.
+                    if (zone == SnapZone.None)
+                    {
+                        Minimise(window);
+                        return;
+                    }
+
+                    ApplySnap(window, zone switch
+                    {
+                        SnapZone.Left => SnapZone.BottomLeft,
+                        SnapZone.Right => SnapZone.BottomRight,
+                        SnapZone.TopLeft => SnapZone.Left,
+                        SnapZone.TopRight => SnapZone.Right,
+                        _ => SnapZone.None,
+                    });
+                    break;
+            }
+        }
+
+        // ---------- snap preview ----------
+
+        private SnapZone _previewZone;
+
+        /// <summary>The zone the pointer is currently over during a drag, if any.</summary>
+        public SnapZone PreviewZone => _previewZone;
+
+        public bool IsSnapPreviewVisible => _previewZone != SnapZone.None;
+
+        public double PreviewX { get; private set; }
+        public double PreviewY { get; private set; }
+        public double PreviewWidth { get; private set; }
+        public double PreviewHeight { get; private set; }
+
+        /// <summary>Paints the translucent outline of where a released drag would land.</summary>
+        public void ShowSnapPreview(SnapZone zone)
+        {
+            if (zone == _previewZone)
+                return;
+
+            _previewZone = zone;
+
+            if (TryZoneBounds(zone, out var r))
+            {
+                PreviewX = r.X;
+                PreviewY = r.Y;
+                PreviewWidth = r.Width;
+                PreviewHeight = r.Height;
+
+                RaisePropertyChanged(nameof(PreviewX));
+                RaisePropertyChanged(nameof(PreviewY));
+                RaisePropertyChanged(nameof(PreviewWidth));
+                RaisePropertyChanged(nameof(PreviewHeight));
+            }
+
+            RaisePropertyChanged(nameof(PreviewZone));
+            RaisePropertyChanged(nameof(IsSnapPreviewVisible));
+        }
+
+        public void HideSnapPreview() => ShowSnapPreview(SnapZone.None);
+
+        // ---------- snap assist ----------
+        //
+        // Filling one half leaves the other one empty, and the window to put there is
+        // almost always one that is already open. Same idea as Windows' snap assist:
+        // offer the other windows in the gap, one click to tile the pair.
+
+        private bool _isSnapAssistOpen;
+        private SnapZone _assistZone;
+        private bool _fillingFromAssist;
+
+        public ObservableCollection<AppWindowViewModel> SnapAssistCandidates { get; } = new();
+
+        public bool IsSnapAssistOpen
+        {
+            get => _isSnapAssistOpen;
+            private set => Set(ref _isSnapAssistOpen, value);
+        }
+
+        public double AssistX { get; private set; }
+        public double AssistY { get; private set; }
+        public double AssistWidth { get; private set; }
+        public double AssistHeight { get; private set; }
+
+        public RelayCommand<AppWindowViewModel> SnapAssistPickCommand { get; }
+
+        /// <summary>The zone opposite a half, or None for anything that leaves no obvious gap.</summary>
+        private static SnapZone Opposite(SnapZone zone) => zone switch
+        {
+            SnapZone.Left => SnapZone.Right,
+            SnapZone.Right => SnapZone.Left,
+            _ => SnapZone.None,
+        };
+
+        private void OfferSnapAssist(AppWindowViewModel snapped)
+        {
+            // Only for the halves. Quarters leave an L-shaped gap that no single window
+            // fills, and offering one of the three remaining corners would be a guess.
+            var gap = Opposite(snapped.Snap);
+            if (gap == SnapZone.None || _fillingFromAssist)
+                return;
+
+            var candidates = Windows
+                .Where(w => !ReferenceEquals(w, snapped) && !w.IsMinimized && w.Snap != gap)
+                .OrderByDescending(w => w.ZIndex)
+                .ToList();
+
+            if (candidates.Count == 0)
+                return;
+
+            SnapAssistCandidates.Clear();
+            foreach (var w in candidates)
+                SnapAssistCandidates.Add(w);
+
+            if (!TryZoneBounds(gap, out var r))
+                return;
+
+            _assistZone = gap;
+
+            AssistX = r.X;
+            AssistY = r.Y;
+            AssistWidth = r.Width;
+            AssistHeight = r.Height;
+
+            RaisePropertyChanged(nameof(AssistX));
+            RaisePropertyChanged(nameof(AssistY));
+            RaisePropertyChanged(nameof(AssistWidth));
+            RaisePropertyChanged(nameof(AssistHeight));
+
+            IsSnapAssistOpen = true;
+        }
+
+        public void CloseSnapAssist()
+        {
+            if (!_isSnapAssistOpen)
+                return;
+
+            IsSnapAssistOpen = false;
+            _assistZone = SnapZone.None;
+            SnapAssistCandidates.Clear();
+        }
+
+        private void FillFromSnapAssist(AppWindowViewModel? window)
+        {
+            var gap = _assistZone;
+            CloseSnapAssist();
+
+            if (window == null || gap == SnapZone.None)
+                return;
+
+            // Suppressed for this one call, or filling the gap would immediately offer to
+            // fill the half we just came from.
+            _fillingFromAssist = true;
+            try
+            {
+                ApplySnap(window, gap);
+            }
+            finally
+            {
+                _fillingFromAssist = false;
+            }
+
+            Activate(window);
         }
 
         // ---------- immersive (maximised) mode ----------

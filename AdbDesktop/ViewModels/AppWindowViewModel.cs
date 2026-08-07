@@ -26,6 +26,7 @@ namespace AdbDesktop
         private double _height = 480;
         private bool _isMinimized;
         private bool _isMaximized;
+        private SnapZone _snap;
         private bool _isChromeRevealed;
         private bool _isActive;
         private int _zIndex;
@@ -135,10 +136,38 @@ namespace AdbDesktop
 
         public bool IsVisibleOnDesktop => !_isMinimized;
 
+        /// <summary>
+        /// Which tile the shell is holding this window in, if any. Set through
+        /// WindowManagerViewModel.ApplySnap, which owns the bounds that go with it.
+        /// </summary>
+        public SnapZone Snap
+        {
+            get => _snap;
+            set
+            {
+                if (!Set(ref _snap, value)) return;
+
+                RaisePropertyChanged(nameof(IsSnapped));
+                RaisePropertyChanged(nameof(IsTiled));
+                IsMaximized = value == SnapZone.Full;
+            }
+        }
+
+        /// <summary>True when the shell, not the user, is deciding this window's bounds.</summary>
+        public bool IsSnapped => _snap != SnapZone.None;
+
+        /// <summary>Snapped to a half or a quarter -- maximised does not count.</summary>
+        public bool IsTiled => _snap is not (SnapZone.None or SnapZone.Full);
+
+        /// <summary>
+        /// Maximised, which is <see cref="SnapZone.Full"/> seen from the view's side.
+        /// Kept as its own property because the window template triggers on it, and
+        /// because it is what "immersive" means to the rest of the shell.
+        /// </summary>
         public bool IsMaximized
         {
             get => _isMaximized;
-            set
+            private set
             {
                 if (!Set(ref _isMaximized, value)) return;
 
@@ -325,17 +354,22 @@ namespace AdbDesktop
 
         public void ApplyRestoreBounds()
         {
-            // Guard against restoring to nothing if a window was created maximised.
-            if (_restoreWidth < MinWidth || _restoreHeight < MinHeight)
-            {
-                _restoreWidth = Math.Max(_restoreWidth, 720);
-                _restoreHeight = Math.Max(_restoreHeight, 480);
-            }
+            NormaliseRestoreSize();
 
             X = _restoreX;
             Y = _restoreY;
             Width = _restoreWidth;
             Height = _restoreHeight;
+        }
+
+        /// <summary>Guards against restoring to nothing if a window was created snapped.</summary>
+        private void NormaliseRestoreSize()
+        {
+            if (_restoreWidth < MinWidth || _restoreHeight < MinHeight)
+            {
+                _restoreWidth = Math.Max(_restoreWidth, 720);
+                _restoreHeight = Math.Max(_restoreHeight, 480);
+            }
         }
     }
 }

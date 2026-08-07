@@ -460,6 +460,7 @@ namespace AdbDesktop
             if (Notifications.IsPanelOpen) { Notifications.IsPanelOpen = false; return true; }
             if (IsConnectionOpen) { IsConnectionOpen = false; return true; }
             if (IsSearchOpen) { IsSearchOpen = false; return true; }
+            if (WindowManager.IsSnapAssistOpen) { WindowManager.CloseSnapAssist(); return true; }
             return false;
         }
 
