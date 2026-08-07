@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -20,10 +21,24 @@ namespace AdbDesktop
         private static readonly TimeSpan ReconnectInterval = TimeSpan.FromSeconds(10);
         private static readonly TimeSpan BatteryInterval = TimeSpan.FromSeconds(60);
 
+        /// <summary>
+        /// Faster than battery: a notification arriving is the whole point of the bell, and
+        /// a minute-old count would be worse than none. Still not a second-by-second poll --
+        /// the dump is filtered device-side but is not free to produce.
+        /// </summary>
+        private static readonly TimeSpan NotificationInterval = TimeSpan.FromSeconds(15);
+
         private readonly System.Timers.Timer _timer;
         private readonly AdbDesktopConfig _config;
         private readonly SemaphoreSlim _tickLock = new(1, 1);
         private readonly Dictionary<string, DateTime> _lastBatteryPoll = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Concurrent, unlike the battery one: the panel's refresh button reads a device
+        /// from the UI thread while the tick may be polling another on the timer thread.
+        /// </summary>
+        private readonly ConcurrentDictionary<string, DateTime> _lastNotificationPoll =
+            new(StringComparer.Ordinal);
 
         /// <summary>adb transport -> hardware serial. A transport's identity never changes.</summary>
         private readonly Dictionary<string, string> _hardwareSerials = new(StringComparer.Ordinal);
@@ -252,6 +267,7 @@ namespace AdbDesktop
 
                 await TryReconnectWirelessAsync(live.Count).ConfigureAwait(false);
                 await PollBatteriesAsync().ConfigureAwait(false);
+                await PollNotificationsAsync().ConfigureAwait(false);
             }
             finally
             {
@@ -270,6 +286,7 @@ namespace AdbDesktop
             {
                 Devices.Remove(gone);
                 _lastBatteryPoll.Remove(gone.Serial);
+                _lastNotificationPoll.TryRemove(gone.Serial, out _);
                 Debugger.show($"[DEV] Disconnected: {gone.Label} ({gone.Serial})");
                 changed = true;
             }
@@ -548,6 +565,41 @@ namespace AdbDesktop
                     Debugger.show($"[DEV] Battery poll failed for {device.Serial}: {ex.Message}");
                 }
             }
+        }
+
+        /// <summary>
+        /// Reads the shade of every ADDED device, staggered the same way batteries are.
+        /// Only added devices: the bell is drawn per taskbar bundle, and a device that is
+        /// merely connected has no bell to put a count on.
+        /// </summary>
+        private async Task PollNotificationsAsync()
+        {
+            foreach (var device in Devices.Where(d => d.IsAdded).ToList())
+            {
+                if (_lastNotificationPoll.TryGetValue(device.Serial, out var last)
+                    && DateTime.UtcNow - last < NotificationInterval)
+                    continue;
+
+                await ReadNotificationsAsync(device).ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// One device, now, regardless of when it was last read. This is what the panel's
+        /// refresh button calls; the timestamp is still stamped, so an on-demand read also
+        /// pushes the scheduled one back rather than being followed by a second read a
+        /// moment later.
+        /// </summary>
+        public async Task ReadNotificationsAsync(DeviceInfo device)
+        {
+            _lastNotificationPoll[device.Serial] = DateTime.UtcNow;
+
+            var snapshot = await NotificationService.GetAsync(device.Transport).ConfigureAwait(false);
+
+            if (!snapshot.Readable)
+                Debugger.show($"[NOTIF] {device.Label}: shade could not be read.");
+
+            await UiThread.RunAsync(() => device.SetNotifications(snapshot)).ConfigureAwait(false);
         }
 
         public void Dispose()

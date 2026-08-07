@@ -47,8 +47,9 @@ namespace AdbDesktop
         public TaskbarViewModel Taskbar { get; } = new();
         public AudioLinkViewModel Audio { get; } = new();
         public WelcomeViewModel Welcome { get; } = new();
+        public NotificationsViewModel Notifications { get; } = new();
 
-        /// <summary>Placeholder: the notification centre is a later milestone.</summary>
+        /// <summary>Opens (or closes) one device's notification panel.</summary>
         public RelayCommand<DeviceInfo> DeviceNotificationsCommand { get; }
 
         /// <summary>Links (or reveals the volume panel for) one device's audio.</summary>
@@ -90,6 +91,10 @@ namespace AdbDesktop
             // adb transport currently reaches it.
             WindowManager.TransportResolver = s => _registry.BySerial(s)?.Transport;
 
+            // The registry owns every adb poll, so the panel's refresh goes through it
+            // rather than reading the device itself and racing the scheduled read.
+            Notifications.Reader = _registry.ReadNotificationsAsync;
+
             // Turning multi-desktop off has to take effect now, not on the next switch:
             // the desktop you are standing on may be the one that just became unreachable.
             Taskbar.ChromeChanged += OnChromeChanged;
@@ -124,9 +129,14 @@ namespace AdbDesktop
             CancelChooseDeviceCommand = new RelayCommand(() => ResolveChoice(null));
             DismissNoticeCommand = new RelayCommand(() => IsNoticeOpen = false);
 
-            DeviceNotificationsCommand = new RelayCommand<DeviceInfo>(d =>
-                Debugger.show($"[NAV] notifications pressed for {d?.Serial} -- not implemented yet."));
-            DeviceAudioCommand = new RelayCommand<DeviceInfo>(d => Audio.Toggle(d));
+            DeviceNotificationsCommand = new RelayCommand<DeviceInfo>(ShowNotifications);
+            DeviceAudioCommand = new RelayCommand<DeviceInfo>(d =>
+            {
+                // Both panels anchor to the same corner of the taskbar, so only one of
+                // them can be up at a time.
+                Notifications.IsPanelOpen = false;
+                Audio.Toggle(d);
+            });
             DeviceDesktopCommand = new RelayCommand<DeviceInfo>(ShowDeviceDesktop);
             ShowUnifiedCommand = new RelayCommand(ShowUnifiedDesktop);
 
@@ -447,6 +457,7 @@ namespace AdbDesktop
             if (IsIconPickerOpen) { ResolvePick(null); return true; }
             if (IsConfirmOpen) { ResolveConfirm(false); return true; }
             if (IsChooseDeviceOpen) { ResolveChoice(null); return true; }
+            if (Notifications.IsPanelOpen) { Notifications.IsPanelOpen = false; return true; }
             if (IsConnectionOpen) { IsConnectionOpen = false; return true; }
             if (IsSearchOpen) { IsSearchOpen = false; return true; }
             return false;
@@ -494,6 +505,7 @@ namespace AdbDesktop
 
             Desktop.ApplyDeviceStates(added);
             Audio.Sync(added);
+            Notifications.Sync(added);
             RaisePropertyChanged(nameof(HasDevices));
             RaisePropertyChanged(nameof(HasMultipleDevices));
             RaisePropertyChanged(nameof(ShowDeviceNumbers));
@@ -556,6 +568,19 @@ namespace AdbDesktop
         /// the result.
         /// </summary>
         private List<DeviceInfo> AppSourceDevices() => _registry.Added.ToList();
+
+        /// <summary>
+        /// The bell in a device's taskbar bundle. Read-only: the panel shows what is
+        /// posted, because nothing reachable over adb can dismiss a notification.
+        /// </summary>
+        private void ShowNotifications(DeviceInfo? device)
+        {
+            if (device == null)
+                return;
+
+            Audio.IsPanelOpen = false;
+            Notifications.Toggle(device);
+        }
 
         // ---------- desktops ----------
 
@@ -1067,6 +1092,7 @@ namespace AdbDesktop
             WindowManager.CloseAll();
             Taskbar.Stop();
             Audio.Dispose();
+            Notifications.Dispose();
             Desktop.IconActivated -= OnIconActivated;
             Connection.Deactivate();
             _registry.DevicesChanged -= OnDevicesChanged;

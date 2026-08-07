@@ -483,6 +483,9 @@ namespace AdbDesktop
 
         private void AudioDismiss_Click(object sender, MouseButtonEventArgs e) => _vm.Audio.IsPanelOpen = false;
 
+        private void NotificationsDismiss_Click(object sender, MouseButtonEventArgs e) =>
+            _vm.Notifications.IsPanelOpen = false;
+
         private void SearchBox_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Down && AppList.Items.Count > 0)

@@ -258,7 +258,67 @@ namespace AdbDesktop
             ? $"Show {Label}'s desktop"
             : $"{Label} has not been added yet - add it from the connection panel";
 
-        public string NotificationsTooltip => $"{Label}: notifications (not implemented yet)";
+        /*
+         * Notifications, read from the device's own dump every few seconds. Held here
+         * rather than in the panel's view model for the same reason battery is: the
+         * taskbar draws one bell per device, and each has to be able to say how many are
+         * waiting without the panel being open at all.
+         */
+
+        private IReadOnlyList<DeviceNotification> _notifications = Array.Empty<DeviceNotification>();
+        private bool _notificationsReadable = true;
+        private bool _notificationsRedacted;
+
+        public IReadOnlyList<DeviceNotification> Notifications => _notifications;
+
+        /// <summary>
+        /// False once a read has failed. Distinct from an empty list: a phone with an
+        /// empty shade and one that will not answer must not look the same.
+        /// </summary>
+        public bool NotificationsReadable => _notificationsReadable;
+
+        /// <summary>The device dumped the list but withheld the text.</summary>
+        public bool NotificationsRedacted => _notificationsRedacted;
+
+        public int NotificationCount => _notifications.Count;
+
+        public bool HasNotifications => _notifications.Count > 0;
+
+        /// <summary>Capped, because the badge is 14px wide and "137" would not fit.</summary>
+        public string NotificationBadgeText =>
+            _notifications.Count > 9 ? "9+" : _notifications.Count.ToString();
+
+        public string NotificationsTooltip
+        {
+            get
+            {
+                if (!_notificationsReadable)
+                    return $"{Label}: notifications could not be read from this device";
+
+                return _notifications.Count switch
+                {
+                    0 => $"{Label}: nothing in the shade",
+                    1 => $"{Label}: 1 notification",
+                    var n => $"{Label}: {n} notifications",
+                };
+            }
+        }
+
+        /// <summary>Called on the UI thread after each read. Always raises, so the panel refreshes.</summary>
+        public void SetNotifications(NotificationSnapshot snapshot)
+        {
+            _notifications = snapshot.Items;
+            _notificationsReadable = snapshot.Readable;
+            _notificationsRedacted = snapshot.Redacted;
+
+            RaisePropertyChanged(nameof(Notifications));
+            RaisePropertyChanged(nameof(NotificationsReadable));
+            RaisePropertyChanged(nameof(NotificationsRedacted));
+            RaisePropertyChanged(nameof(NotificationCount));
+            RaisePropertyChanged(nameof(HasNotifications));
+            RaisePropertyChanged(nameof(NotificationBadgeText));
+            RaisePropertyChanged(nameof(NotificationsTooltip));
+        }
 
         /// <summary>
         /// Names the transport in use and any spare, so a device that is reachable two

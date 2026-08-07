@@ -513,10 +513,39 @@
                                                 Command="{Binding DataContext.DeviceNotificationsCommand,
                                                                   RelativeSource={RelativeSource AncestorType=Window}}"
                                                 CommandParameter="{Binding}">
-                                            <Path Style="{StaticResource NavGlyphStyle}"
-                                                  Fill="{StaticResource MutedTextBrush}"
-                                                  Data="M 7,0 C 10,0 12,2 12,5 L 12,9 L 14,12 L 0,12 L 2,9 L 2,5 C 2,2 4,0 7,0 Z
-                                                        M 5,13 L 9,13 C 9,14.7 8.1,15.5 7,15.5 C 5.9,15.5 5,14.7 5,13 Z"/>
+                                            <!--
+                                              Sized rather than left to fit the bell, so the
+                                              badge has a corner to sit in instead of hanging
+                                              off the glyph into the next control.
+                                            -->
+                                            <Grid Width="24" Height="18">
+                                                <Path Data="M 7,0 C 10,0 12,2 12,5 L 12,9 L 14,12 L 0,12 L 2,9 L 2,5 C 2,2 4,0 7,0 Z
+                                                            M 5,13 L 9,13 C 9,14.7 8.1,15.5 7,15.5 C 5.9,15.5 5,14.7 5,13 Z">
+                                                    <Path.Style>
+                                                        <!-- Brightens once something is waiting, so a glance is enough. -->
+                                                        <Style TargetType="Path" BasedOn="{StaticResource NavGlyphStyle}">
+                                                            <Setter Property="Fill" Value="{StaticResource MutedTextBrush}"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding HasNotifications}" Value="True">
+                                                                    <Setter Property="Fill" Value="{StaticResource TextBrush}"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Path.Style>
+                                                </Path>
+
+                                                <Border HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                        MinWidth="14" Height="14" CornerRadius="7"
+                                                        Padding="4,0"
+                                                        Background="{StaticResource AccentBrush}"
+                                                        Visibility="{Binding HasNotifications,
+                                                                             Converter={StaticResource BoolToVis}}">
+                                                    <TextBlock Text="{Binding NotificationBadgeText}"
+                                                               FontSize="8.5" Foreground="White"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"/>
+                                                </Border>
+                                            </Grid>
                                         </Button>
                                     </StackPanel>
                                     </Border>
@@ -723,6 +752,160 @@
                             HorizontalAlignment="Right"
                             Command="{Binding Audio.DisconnectCommand}"/>
                 </StackPanel>
+            </Border>
+        </Grid>
+
+        <!--
+          ================= notification panel =================
+          Read-only: the dump is the only way to see what is posted, and nothing over adb
+          can dismiss one or fire its action. Opening the shade on the phone is the one
+          thing that can be offered instead.
+        -->
+        <Grid Visibility="{Binding Notifications.IsPanelOpen, Converter={StaticResource BoolToVis}}">
+            <Rectangle Fill="#01000000" MouseLeftButtonDown="NotificationsDismiss_Click"/>
+
+            <Border Width="400" MaxHeight="480"
+                    VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                    Margin="0,0,80,52"
+                    Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource LineBrush}"
+                    BorderThickness="1" CornerRadius="10">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="24" ShadowDepth="4" Opacity="0.55" Color="Black"/>
+                </Border.Effect>
+
+                <DockPanel DataContext="{Binding Notifications}" Margin="16,14,16,14">
+
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                            <TextBlock Text="{Binding PanelTitle}" FontSize="14"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Text="{Binding CountText}" FontSize="11"
+                                       Margin="0,3,0,0"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       Visibility="{Binding CountText, Converter={StaticResource EmptyToVis},
+                                                            ConverterParameter=invert}"/>
+                        </StackPanel>
+
+                        <Button Grid.Column="1" Style="{StaticResource NavButtonStyle}"
+                                Width="30" Height="26" VerticalAlignment="Top"
+                                FontFamily="Segoe MDL2 Assets" FontSize="11" Content="&#xE72C;"
+                                Foreground="{StaticResource MutedTextBrush}"
+                                ToolTip="Read the shade again"
+                                Command="{Binding RefreshCommand}"/>
+                    </Grid>
+
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+                        <Button Content="Open the shade on the phone"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Padding="14,7" HorizontalAlignment="Left"
+                                Command="{Binding OpenOnPhoneCommand}"/>
+                        <TextBlock FontSize="10.5" Margin="0,8,0,0" TextWrapping="Wrap"
+                                   Foreground="{StaticResource AccentBrush}"
+                                   Text="This build redacts notification text, so only the app and the time came through."
+                                   Visibility="{Binding IsRedacted, Converter={StaticResource BoolToVis}}"/>
+
+                        <TextBlock FontSize="10.5" Margin="0,8,0,0" TextWrapping="Wrap"
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   Text="Reading only adb has no way to dismiss a notification or press its buttons."/>
+                    </StackPanel>
+
+                    <Grid>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding Rows}" Margin="0,0,6,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{StaticResource SurfaceHighBrush}"
+                                                BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                                                CornerRadius="8" Padding="10,8" Margin="0,0,0,6"
+                                                ToolTip="{Binding Tooltip}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <!--
+                                                  The app's desktop icon when it has one.
+                                                  Only added apps have been through the
+                                                  picker, so most fall back to a letter.
+                                                -->
+                                                <Grid Grid.Column="0" Width="26" Height="26"
+                                                      Margin="0,1,10,0" VerticalAlignment="Top">
+                                                    <Image Source="{Binding Icon}"
+                                                           RenderOptions.BitmapScalingMode="HighQuality"
+                                                           Visibility="{Binding HasIcon,
+                                                                                Converter={StaticResource BoolToVis}}"/>
+                                                    <Border CornerRadius="6"
+                                                            Background="{StaticResource HoverBrush}"
+                                                            Visibility="{Binding HasIcon,
+                                                                                 Converter={StaticResource InverseBoolToVis}}">
+                                                        <TextBlock Text="{Binding Initial}" FontSize="12"
+                                                                   Foreground="{StaticResource MutedTextBrush}"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </Grid>
+
+                                                <StackPanel Grid.Column="1">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Text="{Binding AppName}"
+                                                                   FontSize="11"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{StaticResource MutedTextBrush}"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding TimeText}"
+                                                                   FontSize="10.5" Margin="8,0,0,0"
+                                                                   Foreground="{StaticResource MutedTextBrush}"/>
+                                                    </Grid>
+
+                                                    <TextBlock Text="{Binding Title}" FontSize="12.5"
+                                                               Margin="0,3,0,0" TextWrapping="Wrap"
+                                                               MaxHeight="34" TextTrimming="CharacterEllipsis"
+                                                               Visibility="{Binding HasTitle,
+                                                                                    Converter={StaticResource BoolToVis}}"/>
+
+                                                    <TextBlock Text="{Binding Text}" FontSize="11.5"
+                                                               Margin="0,2,0,0" TextWrapping="Wrap"
+                                                               MaxHeight="34" TextTrimming="CharacterEllipsis"
+                                                               Foreground="{StaticResource MutedTextBrush}"
+                                                               Visibility="{Binding HasText,
+                                                                                    Converter={StaticResource BoolToVis}}"/>
+
+                                                    <TextBlock Text="No preview text" FontSize="11.5"
+                                                               Margin="0,3,0,0" FontStyle="Italic"
+                                                               Foreground="{StaticResource MutedTextBrush}"
+                                                               Visibility="{Binding HasNoContent,
+                                                                                    Converter={StaticResource BoolToVis}}"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                        <TextBlock Text="Nothing in the shade." FontSize="12"
+                                   Margin="2,4,0,0" VerticalAlignment="Top"
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}"/>
+
+                        <TextBlock FontSize="11.5" Margin="2,4,0,0" VerticalAlignment="Top"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   Text="This device would not dump its notifications. Some builds restrict it, and a phone that has just reconnected may need a moment."
+                                   Visibility="{Binding IsUnreadable, Converter={StaticResource BoolToVis}}"/>
+                    </Grid>
+                </DockPanel>
             </Border>
         </Grid>
 

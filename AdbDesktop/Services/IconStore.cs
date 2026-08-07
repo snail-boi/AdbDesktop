@@ -29,7 +29,7 @@ namespace AdbDesktop
             {
                 Directory.CreateDirectory(AppPaths.IconsDir);
 
-                var fileName = BuildFileName(package, deviceSerial);
+                var fileName = FileNameFor(package, deviceSerial);
                 var fullPath = Path.Combine(AppPaths.IconsDir, fileName);
 
                 var encoder = new PngBitmapEncoder();
@@ -125,9 +125,11 @@ namespace AdbDesktop
         /// "com.example.app-1a2b3c4d5e6f.png". The package stays in front so the cache is
         /// still readable by eye; the hash of package + serial is what actually keeps two
         /// phones' copies of the same app apart. Deterministic, so re-iconning overwrites
-        /// that one file rather than leaving orphans behind.
+        /// that one file rather than leaving orphans behind -- and so a caller holding
+        /// only a package and a serial (the notification panel) can find the icon of an
+        /// app that is already on a desktop without being handed the filename.
         /// </summary>
-        private static string BuildFileName(string package, string deviceSerial)
+        public static string FileNameFor(string package, string deviceSerial)
         {
             // Length-prefixed so a package ending in the separator cannot collide with a
             // serial starting with it.
