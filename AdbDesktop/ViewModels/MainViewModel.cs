@@ -194,6 +194,13 @@ namespace AdbDesktop
 
             _registry.Start();
 
+            // Silent -- showPrompt:false fills in Status, LatestVersion and the notes
+            // without a dialog, so Settings can say where you stand as soon as it opens
+            // instead of only after the button is pressed. Not awaited; nothing waits on it.
+            _ = Updater.CheckForUpdateAsync(
+                typeof(MainViewModel).Assembly.GetName().Version?.ToString() ?? "unknown",
+                showPrompt: false);
+
             // Last, so the guide opens over a shell that has already settled rather than
             // over one still painting itself.
             if (!App.Config.WelcomeSeen)

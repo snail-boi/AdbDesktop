@@ -69,10 +69,19 @@
                   belong inside any one tab.
                 -->
                 <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
-                    <Button Content="Update" Style="{StaticResource SecondaryButtonStyle}"
+                    <!--
+                      Only here when there is an update, and it is the same action as the
+                      button on the Version page: it opens the prompt with the release
+                      notes and installs. A permanently-present "Update" that silently
+                      re-checks is a button that looks broken every time it is pressed.
+                    -->
+                    <Button Content="{Binding UpdateButtonText}"
+                            Style="{StaticResource PrimaryButtonStyle}"
                             Padding="12,7" HorizontalAlignment="Stretch"
-                            ToolTip="Check GitHub for a newer release"
-                            Command="{Binding CheckForUpdatesCommand}"/>
+                            ToolTip="Show what changed and install it"
+                            Command="{Binding UpdateCommand}"
+                            Visibility="{Binding IsUpdateAvailable,
+                                                 Converter={StaticResource BoolToVis}}"/>
                     <TextBlock Text="{Binding UpdateStatus}" FontSize="10.5" Margin="2,6,2,0"
                                TextWrapping="Wrap"
                                Foreground="{StaticResource MutedTextBrush}"
@@ -356,9 +365,35 @@
                                Text="Applies to adb straight away; windows already open keep the level they started with, so open the app you want to capture after switching this on."
                                Visibility="{Binding DebugLogging, Converter={StaticResource BoolToVis}}"/>
 
-                    <TextBlock Text="Version" Style="{StaticResource LabelTextStyle}" Margin="0,18,0,5"/>
-                    <TextBlock Text="{Binding Version}" FontSize="11.5"
+                    <TextBlock Text="Version" Style="{StaticResource SectionHeadingStyle}"
+                               Margin="0,22,0,10"/>
+
+                    <TextBlock Text="{Binding Version}" FontSize="15"/>
+
+                    <!-- Up to date / newer than the release / a version is available. -->
+                    <TextBlock Text="{Binding UpdateStatus}" FontSize="11.5" Margin="0,4,0,0"
+                               TextWrapping="Wrap"
                                Foreground="{StaticResource MutedTextBrush}"/>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <!-- Only present when there is actually something to install. -->
+                        <Button Content="{Binding UpdateButtonText}"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Padding="14,7" Margin="0,0,8,0"
+                                Command="{Binding UpdateCommand}"
+                                Visibility="{Binding IsUpdateAvailable,
+                                                     Converter={StaticResource BoolToVis}}"/>
+
+                        <Button Content="Check again"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Padding="14,7"
+                                Command="{Binding CheckForUpdatesCommand}"/>
+                    </StackPanel>
+
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="0,10,0,0"
+                               TextWrapping="Wrap"
+                               Text="This is a portable copy, so it cannot replace itself. The button opens the releases page; download the portable zip and unpack it over this folder, keeping portable.mode."
+                               Visibility="{Binding IsPortable, Converter={StaticResource BoolToVis}}"/>
                 </StackPanel>
             </Grid>
         </ScrollViewer>

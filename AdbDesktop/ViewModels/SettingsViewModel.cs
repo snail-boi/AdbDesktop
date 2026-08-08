@@ -41,6 +41,14 @@ namespace AdbDesktop
             OpenDataFolderCommand = new RelayCommand(OpenDataFolder);
             ApplyWallpaperToAllCommand = new RelayCommand(ApplyWallpaperToAll);
             CheckForUpdatesCommand = new RelayCommand(() => _ = CheckForUpdatesAsync(), () => !_isCheckingUpdate);
+            UpdateCommand = new RelayCommand(() => _ = RunUpdateAsync(), () => !_isCheckingUpdate);
+
+            // The startup check has usually answered by now, so this only covers the case
+            // where it had not finished or could not reach GitHub.
+            if (Updater.LatestVersion == null)
+                _ = CheckForUpdatesAsync();
+            else
+                _hasChecked = true;
             ShowWelcomeCommand = new RelayCommand(() => WelcomeRequested?.Invoke());
         }
 
@@ -57,51 +65,118 @@ namespace AdbDesktop
         // ---------- update ----------
 
         private bool _isCheckingUpdate;
-        private string _updateStatus = string.Empty;
+        private bool _hasChecked;
 
         public RelayCommand CheckForUpdatesCommand { get; }
 
+        /// <summary>
+        /// Installs the update. Goes through Updater.CheckForUpdateAsync with the prompt
+        /// on, which is what shows the release notes and then downloads and runs the
+        /// setup -- or opens the releases page for a portable copy, which cannot replace
+        /// itself.
+        /// </summary>
+        public RelayCommand UpdateCommand { get; }
+
+        /// <summary>
+        /// Where the check got to, in words. Reads Updater.Status rather than keeping its
+        /// own copy, so the startup check's answer is already here when Settings opens.
+        /// </summary>
         public string UpdateStatus
         {
-            get => _updateStatus;
-            private set
+            get
             {
-                if (Set(ref _updateStatus, value))
-                    RaisePropertyChanged(nameof(HasUpdateStatus));
+                if (_isCheckingUpdate)
+                    return "Checking for updates...";
+
+                if (!_hasChecked && Updater.LatestVersion == null)
+                    return "Not checked yet.";
+
+                return Updater.Status switch
+                {
+                    AdbDesktop.UpdateStatus.UpdateAvailable => $"{Updater.LatestVersion} is available.",
+                    AdbDesktop.UpdateStatus.DebugBuild => "Newer than the latest release - this is a local build.",
+                    _ => "Up to date.",
+                };
             }
         }
 
-        public bool HasUpdateStatus => !string.IsNullOrEmpty(_updateStatus);
+        public bool HasUpdateStatus => !string.IsNullOrEmpty(UpdateStatus);
+
+        /// <summary>Only then is there anything for the update button to do.</summary>
+        public bool IsUpdateAvailable =>
+            !_isCheckingUpdate && Updater.Status == AdbDesktop.UpdateStatus.UpdateAvailable;
 
         /// <summary>
-        /// Asks GitHub what the newest release is. The Updater raises its own prompt when
-        /// there is one, so all that is reported back here is the "nothing to do" case --
-        /// otherwise the button would look like it did nothing.
+        /// A portable copy is a folder the user put somewhere, so the installer cannot
+        /// find it to replace. Its button says where it actually goes.
+        /// </summary>
+        public bool IsPortable => AppPaths.IsPortable;
+
+        public string UpdateButtonText => IsPortable ? "Get it from GitHub" : "Update now";
+
+        private void RaiseUpdateState()
+        {
+            RaisePropertyChanged(nameof(UpdateStatus));
+            RaisePropertyChanged(nameof(HasUpdateStatus));
+            RaisePropertyChanged(nameof(IsUpdateAvailable));
+        }
+
+        /// <summary>
+        /// Asks GitHub what the newest release is, without a dialog. What comes back is
+        /// shown on the page; installing is a separate, deliberate press.
         /// </summary>
         private async Task CheckForUpdatesAsync()
         {
             _isCheckingUpdate = true;
-            UpdateStatus = "Checking...";
+            RaiseUpdateState();
+
+            try
+            {
+                await Updater.CheckForUpdateAsync(Version, showPrompt: false);
+            }
+            catch (Exception ex)
+            {
+                Debugger.show("[SETTINGS] Update check failed: " + ex.Message);
+            }
+            finally
+            {
+                _isCheckingUpdate = false;
+                _hasChecked = true;
+                RaiseUpdateState();
+            }
+        }
+
+        /// <summary>
+        /// The prompt carries the release notes and does the install, so this is the
+        /// existing update flow, reached deliberately instead of on a check.
+        /// </summary>
+        private async Task RunUpdateAsync()
+        {
+            // Timed, because the two ways this can fail look identical from the outside.
+            // The prompt is modal: if it opened at all, the await cannot return until it
+            // is closed. Returning in milliseconds therefore means the dialog was never
+            // shown -- the call took a silent early exit -- while a long wait means it was
+            // shown somewhere off screen or behind the shell.
+            var started = DateTime.UtcNow;
+
+            Debugger.show($"[SETTINGS] Update pressed. status={Updater.Status} " +
+                          $"latest={Updater.LatestVersion ?? "(none)"} portable={AppPaths.IsPortable}");
 
             try
             {
                 await Updater.CheckForUpdateAsync(Version, showPrompt: true, allowRemindLater: false);
 
-                UpdateStatus = Updater.Status switch
-                {
-                    AdbDesktop.UpdateStatus.UpdateAvailable => $"Version {Updater.LatestVersion} is available.",
-                    AdbDesktop.UpdateStatus.DebugBuild => "This build is newer than the latest release.",
-                    _ => "Up to date.",
-                };
+                Debugger.show($"[SETTINGS] Update returned after " +
+                              $"{(DateTime.UtcNow - started).TotalMilliseconds:F0} ms, " +
+                              $"status={Updater.Status}");
             }
             catch (Exception ex)
             {
-                Debugger.show("[SETTINGS] Update check failed: " + ex.Message);
-                UpdateStatus = "Could not check for updates.";
+                Debugger.show("[SETTINGS] Update failed: " + ex);
             }
             finally
             {
-                _isCheckingUpdate = false;
+                RaiseUpdateState();
             }
         }
 
