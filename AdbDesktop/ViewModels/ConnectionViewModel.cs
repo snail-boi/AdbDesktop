@@ -60,7 +60,8 @@ namespace AdbDesktop
         public System.Windows.Media.Brush? DeviceBrush => DeviceColours.BrushFor(Serial);
 
         public bool ShowDeviceColour =>
-            string.Equals(App.Config.Icons.DeviceMarker, DeviceMarkers.Colour, StringComparison.Ordinal);
+            DeviceColours.MarkersMeaningful
+            && string.Equals(App.Config.Icons.DeviceMarker, DeviceMarkers.Colour, StringComparison.Ordinal);
 
         /// <summary>Re-reads the marker setting after it is changed in Settings.</summary>
         public void RefreshMarker() => RaisePropertyChanged(nameof(ShowDeviceColour));

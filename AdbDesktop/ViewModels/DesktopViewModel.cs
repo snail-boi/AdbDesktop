@@ -91,6 +91,7 @@ namespace AdbDesktop
             }
 
             EnsureBuiltIns();
+            RefreshDeviceMarkers();
             Reflow();
 
             RaisePropertyChanged(nameof(IsUnified));
@@ -137,6 +138,8 @@ namespace AdbDesktop
                         icon.DeviceLabel = known!.Model;
                 }
             }
+
+            RefreshDeviceMarkers();
         }
 
         /// <summary>
@@ -148,6 +151,20 @@ namespace AdbDesktop
         {
             foreach (var icon in Icons)
                 icon.RefreshAppearance();
+        }
+
+        /// <summary>
+        /// Tells every icon whether more than one device is here, which is the only
+        /// situation in which a device marker says anything.
+        ///
+        /// Counted from the devices, not from the icons: leftover icons from a phone that
+        /// is not connected are not something the user is choosing between, so colouring
+        /// the ones that are does not disambiguate anything.
+        /// </summary>
+        private void RefreshDeviceMarkers()
+        {
+            foreach (var icon in Icons)
+                icon.HasSeveralDevices = DeviceColours.MarkersMeaningful;
         }
 
         // ---------- built-ins ----------
@@ -360,6 +377,10 @@ namespace AdbDesktop
             ApplyPixelPosition(icon);
 
             Icons.Add(icon);
+
+            // The first app from a second phone is what makes the markers mean something.
+            RefreshDeviceMarkers();
+
             Persist();
             RaisePropertyChanged(nameof(HasUserIcons));
             return icon;
@@ -376,6 +397,10 @@ namespace AdbDesktop
                 return;
 
             IconStore.Delete(icon.IconFile);
+
+            // Removing the last app of a device leaves nothing to tell apart.
+            RefreshDeviceMarkers();
+
             Persist();
             RaisePropertyChanged(nameof(HasUserIcons));
         }

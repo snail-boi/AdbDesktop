@@ -543,10 +543,25 @@ namespace AdbDesktop
             // connected but not added still has nothing to run on.
             var added = _registry.Added.ToList();
 
+            // Before anything reads it: the icons, the taskbar entries and the connection
+            // panel rows all decide whether to draw a device marker from this.
+            var markersChanged = DeviceColours.MarkersMeaningful != added.Count > 1;
+            DeviceColours.DeviceCount = added.Count;
+
             Desktop.ApplyDeviceStates(added);
             Audio.Sync(added);
             Notifications.Sync(added);
             RestoreSessionWindows(added);
+
+            // Crossing one device makes the markers appear or disappear everywhere. The
+            // icons are handled by ApplyDeviceStates; these two are not bound to it.
+            if (markersChanged)
+            {
+                Connection.RefreshDeviceMarkers();
+
+                foreach (var device in _registry.Devices)
+                    device.RaiseMarkerChanged();
+            }
             RaisePropertyChanged(nameof(HasDevices));
             RaisePropertyChanged(nameof(HasMultipleDevices));
             RaisePropertyChanged(nameof(ShowDeviceNumbers));

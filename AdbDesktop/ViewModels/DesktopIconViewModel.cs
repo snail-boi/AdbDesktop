@@ -197,11 +197,38 @@ namespace AdbDesktop
          * marker answers it at a glance, in one of two ways -- see DeviceMarkers.
          */
 
+        private bool _hasSeveralDevices;
+
         /// <summary>
-        /// True for an icon that could carry a marker: on the unified desktop, and owned
-        /// by a device. Built-ins are adbDesktop's own and belong to no phone.
+        /// Whether the desktop is showing icons from more than one device. Pushed in by
+        /// DesktopViewModel, because a single icon cannot see the others.
+        ///
+        /// With one device every icon carries the same colour or the same number, which
+        /// answers a question nobody is asking and costs a row of desktop to do it.
         /// </summary>
-        private bool CanMark => IsUnifiedDesktop && !IsBuiltIn && !string.IsNullOrEmpty(DeviceSerial);
+        public bool HasSeveralDevices
+        {
+            get => _hasSeveralDevices;
+            set
+            {
+                if (_hasSeveralDevices == value)
+                    return;
+
+                _hasSeveralDevices = value;
+
+                RaisePropertyChanged(nameof(ShowDeviceColour));
+                RaisePropertyChanged(nameof(ReserveColourBar));
+                RaisePropertyChanged(nameof(ShowDeviceBadge));
+            }
+        }
+
+        /// <summary>
+        /// True for an icon that could carry a marker: on the unified desktop, owned by a
+        /// device, and with another device's icons to be told apart from. Built-ins are
+        /// adbDesktop's own and belong to no phone.
+        /// </summary>
+        private bool CanMark =>
+            IsUnifiedDesktop && _hasSeveralDevices && !IsBuiltIn && !string.IsNullOrEmpty(DeviceSerial);
 
         /// <summary>The device's colour, hashed from its serial. Null when it has none.</summary>
         public System.Windows.Media.Brush? DeviceBrush => DeviceColours.BrushFor(DeviceSerial);
@@ -216,7 +243,7 @@ namespace AdbDesktop
         /// up next to everything else.
         /// </summary>
         public bool ReserveColourBar =>
-            IsUnifiedDesktop
+            IsUnifiedDesktop && _hasSeveralDevices
             && string.Equals(App.Config.Icons.DeviceMarker, DeviceMarkers.Colour, StringComparison.Ordinal);
 
         /// <summary>

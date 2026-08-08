@@ -18,6 +18,21 @@ namespace AdbDesktop
     /// </summary>
     internal static class DeviceColours
     {
+        /// <summary>
+        /// How many devices are currently added. Set by MainViewModel as the device set
+        /// changes; read by everything that draws a marker.
+        /// </summary>
+        public static int DeviceCount { get; set; }
+
+        /// <summary>
+        /// Whether a device marker distinguishes anything. With one device every icon
+        /// carries the same colour or the same number, and the taskbar and connection
+        /// panel underlines are legends for a marker that is not being drawn -- so all of
+        /// them go away together.
+        /// </summary>
+        public static bool MarkersMeaningful => DeviceCount > 1;
+
+
         /// <summary>Evenly spread around the wheel and pitched for the dark surface.</summary>
         private static readonly string[] PaletteHex =
         {
