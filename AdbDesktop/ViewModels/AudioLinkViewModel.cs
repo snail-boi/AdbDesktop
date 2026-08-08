@@ -238,8 +238,13 @@ namespace AdbDesktop
 
         public void Dispose()
         {
+            // Every session is asked to stop first, so their teardowns overlap rather
+            // than the wait below being paid once per device.
             foreach (var session in _sessions.Values)
                 session.Dispose();
+
+            foreach (var session in _sessions.Values)
+                session.WaitForTeardown(TimeSpan.FromSeconds(3));
 
             _sessions.Clear();
         }

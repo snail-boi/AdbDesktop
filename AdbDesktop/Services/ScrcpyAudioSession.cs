@@ -123,6 +123,23 @@ namespace AdbDesktop
             return true;
         }
 
+        /// <summary>The teardown in flight, if any. Only waited on at shutdown.</summary>
+        private Task? _teardown;
+
+        /// <summary>
+        /// Detaches the session immediately and finishes tearing it down in the
+        /// background.
+        ///
+        /// sca_stop() blocks: it kills the device-side server and joins the port's
+        /// threads, which takes long enough to be seen as a stall if it runs on the UI
+        /// thread -- and this is called straight from a click. ScrcpyVideoSession.Dispose
+        /// does the same thing with scv_close for the same reason.
+        ///
+        /// Everything the session owns is handed to the task and the fields cleared
+        /// first, so a Start() right afterwards (RestartFor does exactly that) builds a
+        /// fresh module while the old one is still winding down. They are separate
+        /// private copies of the DLL, so the two do not interfere.
+        /// </summary>
         public void Stop()
         {
             if (!_started)
@@ -130,36 +147,42 @@ namespace AdbDesktop
 
             _started = false;
 
-            try
-            {
-                _output?.Stop();
-                _output?.Dispose();
-            }
-            catch (Exception ex)
-            {
-                Debugger.show("[AUDIO] Stopping WASAPI failed: " + ex.Message);
-            }
-            finally
-            {
-                _output = null;
-            }
+            var output = _output;
+            var module = _module;
 
-            try
-            {
-                _module?.Stop();
-            }
-            catch (Exception ex)
-            {
-                Debugger.show("[AUDIO] sca_stop failed: " + ex.Message);
-            }
-            finally
-            {
-                // The module goes with the session: its statics are the session.
-                _module?.Dispose();
-                _module = null;
-            }
+            _output = null;
+            _module = null;
+            _provider = null;
 
-            Debugger.show("[AUDIO] Audio link stopped.");
+            _teardown = Task.Run(() =>
+            {
+                try
+                {
+                    // First, so the render thread is gone before the module is retired.
+                    output?.Stop();
+                    output?.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Debugger.show("[AUDIO] Stopping WASAPI failed: " + ex.Message);
+                }
+
+                try
+                {
+                    module?.Stop();
+                }
+                catch (Exception ex)
+                {
+                    Debugger.show("[AUDIO] sca_stop failed: " + ex.Message);
+                }
+                finally
+                {
+                    // The module goes with the session: its statics are the session.
+                    module?.Dispose();
+                }
+
+                Debugger.show("[AUDIO] Audio link stopped.");
+            });
         }
 
         private void OnEvent(int evt, IntPtr userdata) => SessionEvent?.Invoke(evt);
@@ -242,6 +265,29 @@ namespace AdbDesktop
             }
         }
 
+        /// <summary>
+        /// Never waits: this is what turning audio off from the panel calls, and blocking
+        /// here is the stall that backgrounding the teardown exists to avoid.
+        /// </summary>
         public void Dispose() => Stop();
+
+        /// <summary>
+        /// Waits for a backgrounded teardown, for shutdown only.
+        ///
+        /// The process is about to exit there, and without this sca_stop can be cut off
+        /// before it kills the device-side server -- leaving the phone capturing audio
+        /// for nobody. Bounded, so a wedged teardown cannot stop AdbDesktop from closing.
+        /// </summary>
+        public void WaitForTeardown(TimeSpan timeout)
+        {
+            try
+            {
+                _teardown?.Wait(timeout);
+            }
+            catch (Exception ex)
+            {
+                Debugger.show("[AUDIO] Waiting for audio teardown failed: " + ex.Message);
+            }
+        }
     }
 }
