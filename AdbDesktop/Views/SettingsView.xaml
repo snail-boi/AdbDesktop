@@ -312,20 +312,14 @@
                     <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="0,8,0,0"
                                Foreground="{StaticResource AccentBrush}"
                                TextWrapping="Wrap"
-                               Text="Below 220 ms is not just a faster redraw. Every size sent makes Android rebuild the virtual display and restart the video encoder, and adbDesktop reopens its decoder to match, so one drag becomes a burst of those. How low you can go depends on the phone: a fast one may be fine at 80, a slower one will stutter, drop sizes, and warm up. It cannot hurt the device, and the phone-side display is rebuilt from scratch each time, so the worst outcome is a rough-looking resize or adbDesktop itself falling over. Worth trying, worth putting back if mirroring turns unreliable."
+                               Text="Each size that goes out makes the phone rebuild the virtual display and restart its encoder, so a low value asks for a lot more of those. How low you can usefully go depends on the phone, and going below what it can keep up with does not break anything: the extra requests are dropped rather than queued. If resizing starts to stutter or feel unreliable, raise it again."
                                Visibility="{Binding IsResizeDelayLow, Converter={StaticResource BoolToVis}}"/>
 
-                    <Border Margin="0,10,0,0" CornerRadius="8" Padding="12,10"
-                            Background="{StaticResource SurfaceHighBrush}"
-                            BorderBrush="{StaticResource AccentBrush}" BorderThickness="1"
-                            Visibility="{Binding IsResizeDelayRisky, Converter={StaticResource BoolToVis}}">
-                        <StackPanel>
-                            <TextBlock Text="Expect crashes at this setting"
-                                       FontSize="12" FontWeight="SemiBold" Margin="0,0,0,5"/>
-                            <TextBlock Style="{StaticResource EmptyTabStyle}" TextWrapping="Wrap"
-                                       Text="Under 50 ms, new sizes go out faster than the phone can finish the previous one, so the display rebuild and encoder restart never get to settle. That is the heaviest path in adbDesktop and the one crashes have come from before. Dragging a window around at this setting can take the whole app down, and any unsaved state in the mirrored apps goes with it. The setting is saved immediately, so after a crash it will still be this low -- put it back from here before resizing anything."/>
-                        </StackPanel>
-                    </Border>
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="0,8,0,0"
+                               Foreground="{StaticResource AccentBrush}"
+                               TextWrapping="Wrap"
+                               Text="Very low values mostly stop making a difference: resizes are already limited by how fast the window itself changes size and by how quickly the phone answers, so past a point the delay is no longer what is holding things up. Harmless to try -- if anything misbehaves, put it back to 220."
+                               Visibility="{Binding IsResizeDelayRisky, Converter={StaticResource BoolToVis}}"/>
 
                     <TextBlock Text="Version" Style="{StaticResource LabelTextStyle}" Margin="0,18,0,5"/>
                     <TextBlock Text="{Binding Version}" FontSize="11.5"

@@ -5,6 +5,7 @@
 
 #include <stdbool.h>
 
+#include "device_msg.h"
 #include "util/net.h"
 #include "util/thread.h"
 
@@ -31,6 +32,16 @@ struct sc_receiver {
     sc_socket control_socket;
     sc_thread thread;
     sc_mutex mutex;
+
+    /*
+     * PORT: per receiver, not a static inside the read loop.
+     *
+     * Upstream is one session per process, so one shared buffer was fine there.
+     * This build runs a session per window, each with its own receiver thread --
+     * they would all recv() into the same array and then parse it against their
+     * own offsets, reading bytes another session had just written over.
+     */
+    uint8_t buf[DEVICE_MSG_MAX_SIZE];
 
     /*
      * Retained only so sc_controller_configure() still compiles unchanged. Both

@@ -142,7 +142,7 @@ sc_controller_resize_display(struct sc_controller *controller,
 static bool
 process_msg(struct sc_controller *controller,
             const struct sc_control_msg *msg, bool *eos) {
-    static uint8_t serialized_msg[SC_CONTROL_MSG_MAX_SIZE];
+    uint8_t *serialized_msg = controller->serialized_msg;   // this controller's own
     size_t length = sc_control_msg_serialize(msg, serialized_msg);
     if (!length) {
         *eos = false;

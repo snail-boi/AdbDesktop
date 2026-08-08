@@ -64,7 +64,7 @@ static int
 run_receiver(void *data) {
     struct sc_receiver *receiver = data;
 
-    static uint8_t buf[DEVICE_MSG_MAX_SIZE];
+    uint8_t *buf = receiver->buf;   // this receiver's own; see receiver.h
     size_t head = 0;
     bool error = false;
 

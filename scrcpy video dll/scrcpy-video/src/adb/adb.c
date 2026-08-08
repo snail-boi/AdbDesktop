@@ -39,8 +39,28 @@ sc_adb_set_executable(const char *path) {
     adb_executable_override = path ? strdup(path) : NULL;
 }
 
-bool
-sc_adb_init(void) {
+/*
+ * PORT: refcounted, because adb_executable is one global shared by every
+ * session and this build runs a session per window.
+ *
+ * sc_server_init() calls sc_adb_init() and sc_server_destroy() calls
+ * sc_adb_destroy(), so with N windows the string was strdup'd N times into the
+ * same global -- leaking all but the last -- and then free()d N times on the
+ * same surviving pointer. The first close freed it; every close after that was
+ * a double free, and any adb command issued in between read a dangling pointer.
+ *
+ * That is why one window was always stable and closing the second was not.
+ *
+ * The lock is not optional: sc_adb_init() runs on the thread that opens a
+ * session while sc_adb_destroy() runs on whichever background thread closes
+ * one, so the two genuinely overlap.
+ */
+static SRWLOCK adb_lock = SRWLOCK_INIT;
+static unsigned adb_refcount;
+
+// Call with adb_lock held. Sets adb_executable.
+static bool
+adb_resolve_executable(void) {
     if (adb_executable_override) {
         adb_executable = strdup(adb_executable_override);
         if (!adb_executable) {
@@ -79,9 +99,38 @@ sc_adb_init(void) {
     return true;
 }
 
+bool
+sc_adb_init(void) {
+    AcquireSRWLockExclusive(&adb_lock);
+
+    // Already resolved by another session: take a reference and reuse it. The
+    // path is the same for every session, so re-resolving would only leak.
+    if (adb_refcount) {
+        ++adb_refcount;
+        ReleaseSRWLockExclusive(&adb_lock);
+        return true;
+    }
+
+    bool ok = adb_resolve_executable();
+    if (ok) {
+        adb_refcount = 1;
+    }
+
+    ReleaseSRWLockExclusive(&adb_lock);
+    return ok;
+}
+
 void
 sc_adb_destroy(void) {
-    free(adb_executable);
+    AcquireSRWLockExclusive(&adb_lock);
+
+    // Freed by the last session out, not by the first.
+    if (adb_refcount && !--adb_refcount) {
+        free(adb_executable);
+        adb_executable = NULL;
+    }
+
+    ReleaseSRWLockExclusive(&adb_lock);
 }
 
 const char *

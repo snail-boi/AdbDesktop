@@ -37,6 +37,13 @@ struct sc_controller {
         uint16_t height;
     } resize_display;
 
+    /*
+     * PORT: per controller, for the same reason as sc_receiver::buf. Every
+     * session's controller thread serialised into one shared static and then
+     * sent from it, so two windows acting at once could send each other's bytes.
+     */
+    uint8_t serialized_msg[SC_CONTROL_MSG_MAX_SIZE];
+
     struct sc_receiver receiver;
 
     const struct sc_controller_callbacks *cbs;

@@ -27,7 +27,16 @@ else
 endif
 
 # _WIN32_WINNT >= 0x0600 is required for SRWLOCK / CONDITION_VARIABLE.
+#
+# -MMD -MP writes a .d file per object listing the headers it included, pulled
+# back in at the bottom of this file. Without it make only watches the .c files,
+# so editing a header rebuilds nothing that includes it -- and since several
+# headers here define structs that others embed (sc_receiver inside
+# sc_controller inside scv_session), that silently produces a DLL whose object
+# files disagree about struct layout. It links, it loads, and it crashes on the
+# first session. Always a full `make clean` job to diagnose, so: dependencies.
 CFLAGS := -std=c11 $(OPT) -Wall -Wextra -Wno-unused-parameter \
+	-MMD -MP \
 	-DSCV_BUILDING \
 	-D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE=700 \
 	-D_WIN32_WINNT=0x0601 -DWINVER=0x0601 \
@@ -77,6 +86,7 @@ SRC := \
 	src/sys/win/process.c
 
 OBJ := $(SRC:src/%.c=build/obj/%.o)
+DEP := $(OBJ:.o=.d)
 
 .PHONY: all clean test
 
@@ -89,6 +99,10 @@ $(TARGET): $(OBJ)
 build/obj/%.o: src/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+# Header dependencies recorded by -MMD. Leading '-' so a first build, where no
+# .d files exist yet, is not an error.
+-include $(DEP)
 
 # Native smoke test: connects to a device and dumps a frame to BMP.
 test: $(TARGET)
