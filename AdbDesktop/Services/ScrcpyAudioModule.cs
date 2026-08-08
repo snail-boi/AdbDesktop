@@ -131,30 +131,55 @@ namespace AdbDesktop
             return dir;
         }
 
-        public void SettingsInit(ref ScrcpyAudioNative.Settings settings) => _settingsInit(ref settings);
+        /// <summary>
+        /// Volatile: set on the thread that stops the link, read on the WASAPI render
+        /// thread, which is the one that must not call into a dead module.
+        /// </summary>
+        private volatile bool _disposed;
 
-        public int Start(ref ScrcpyAudioNative.Settings settings) => _start(ref settings);
+        public void SettingsInit(ref ScrcpyAudioNative.Settings settings)
+        {
+            if (!_disposed)
+                _settingsInit(ref settings);
+        }
 
-        public void Stop() => _stop();
+        public int Start(ref ScrcpyAudioNative.Settings settings) =>
+            _disposed ? -1 : _start(ref settings);
 
-        public void Read(IntPtr buffer, int maxBytes) => _read(buffer, maxBytes);
+        public void Stop()
+        {
+            if (!_disposed)
+                _stop();
+        }
 
+        /// <summary>False once the module is dead; the caller must then produce silence.</summary>
+        public bool Read(IntPtr buffer, int maxBytes)
+        {
+            if (_disposed)
+                return false;
+
+            _read(buffer, maxBytes);
+            return true;
+        }
+
+        /// <summary>
+        /// Retires the module without unloading it.
+        ///
+        /// This used to call NativeLibrary.Free, which unmapped scrcpy_audio.dll while
+        /// code from it could still run: the WASAPI render thread can make one more
+        /// sca_read after the output is stopped, and the port's own threads (and SDL's)
+        /// are not guaranteed to have unwound by the time sca_stop returns. Either one
+        /// then executes in an unmapped image, which is an access violation -- and not a
+        /// catchable one, so the guard in PullProvider.Read could not help.
+        ///
+        /// Keeping the image mapped costs address space per audio session and nothing
+        /// else: the flag above makes every entry point a no-op, so nothing calls into
+        /// a module whose session is over.
+        /// </summary>
         public void Dispose()
         {
-            if (_handle == IntPtr.Zero)
-                return;
-
-            var handle = _handle;
+            _disposed = true;
             _handle = IntPtr.Zero;
-
-            try
-            {
-                NativeLibrary.Free(handle);
-            }
-            catch (Exception ex)
-            {
-                Debugger.advanced("[AUDIO] Freeing audio module failed: " + ex.Message);
-            }
         }
     }
 }

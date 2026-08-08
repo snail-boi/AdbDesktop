@@ -190,10 +190,14 @@ namespace AdbDesktop
             public int Read(byte[] buffer, int offset, int count)
             {
                 var handle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+                bool filled;
                 try
                 {
                     var ptr = IntPtr.Add(handle.AddrOfPinnedObject(), offset);
-                    _module.Read(ptr, count);
+
+                    // False once the session has been stopped. This call runs on the
+                    // render thread, which can outlive the stop by a buffer or two.
+                    filled = _module.Read(ptr, count);
                 }
                 catch
                 {
@@ -203,6 +207,12 @@ namespace AdbDesktop
                 finally
                 {
                     handle.Free();
+                }
+
+                if (!filled)
+                {
+                    Array.Clear(buffer, offset, count);
+                    return count;
                 }
 
                 Scale(buffer, offset, count, Volume);
