@@ -73,6 +73,13 @@ namespace AdbDesktop
             set => SetOption(() => Cfg.ShowWindowTabs, v => Cfg.ShowWindowTabs = v, value, nameof(ShowWindowTabs));
         }
 
+        public bool NotificationPings
+        {
+            get => Cfg.NotificationPings;
+            set => SetOption(() => Cfg.NotificationPings, v => Cfg.NotificationPings = v, value,
+                nameof(NotificationPings));
+        }
+
         public bool ShowNotifications
         {
             get => Cfg.ShowNotifications;

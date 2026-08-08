@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 namespace AdbDesktop
 {
@@ -77,12 +78,19 @@ namespace AdbDesktop
         public RelayCommand RefreshCommand { get; }
         public RelayCommand OpenOnPhoneCommand { get; }
         public RelayCommand CloseCommand { get; }
+        public RelayCommand OpenPingCommand { get; }
+        public RelayCommand DismissPingCommand { get; }
 
         public NotificationsViewModel()
         {
             RefreshCommand = new RelayCommand(() => _ = RefreshAsync(), () => !_isRefreshing);
             OpenOnPhoneCommand = new RelayCommand(OpenOnPhone);
             CloseCommand = new RelayCommand(() => IsPanelOpen = false);
+
+            OpenPingCommand = new RelayCommand(OpenPingedDevice);
+            DismissPingCommand = new RelayCommand(DismissPing);
+
+            _pingTimer.Tick += (_, _) => DismissPing();
         }
 
         public DeviceInfo? Device => _device;
@@ -90,7 +98,110 @@ namespace AdbDesktop
         public bool IsPanelOpen
         {
             get => _isPanelOpen;
-            set => Set(ref _isPanelOpen, value);
+            set
+            {
+                if (!Set(ref _isPanelOpen, value))
+                    return;
+
+                // The panel says everything the ping was there to say.
+                if (value)
+                    DismissPing();
+            }
+        }
+
+        // ---------- pings ----------
+        //
+        // The bell already carries a count, which answers "is there anything" but only if
+        // you happen to look at it. A ping is for the arrival itself: it appears by the
+        // bell, says what came in, and goes away on its own.
+
+        private readonly DispatcherTimer _pingTimer = new() { Interval = TimeSpan.FromSeconds(6) };
+
+        private DeviceInfo? _pingDevice;
+        private NotificationRow? _pingRow;
+        private int _pingExtra;
+        private bool _isPingVisible;
+
+        /// <summary>The newest arrival, drawn exactly like a row in the panel.</summary>
+        public NotificationRow? PingRow
+        {
+            get => _pingRow;
+            private set => Set(ref _pingRow, value);
+        }
+
+        public bool IsPingVisible
+        {
+            get => _isPingVisible;
+            private set => Set(ref _isPingVisible, value);
+        }
+
+        /// <summary>"+2 more" when several land in the same read. Empty for a single one.</summary>
+        public string PingExtraText => _pingExtra > 0 ? $"+{_pingExtra} more" : string.Empty;
+
+        public bool HasPingExtra => _pingExtra > 0;
+
+        /// <summary>Which phone it came from. Only worth saying when there are several.</summary>
+        public string PingDeviceLabel => _pingDevice?.Label ?? string.Empty;
+
+        public bool ShowPingDeviceLabel =>
+            _pingDevice != null && DeviceColours.MarkersMeaningful;
+
+        /// <summary>
+        /// Announces new notifications. The newest is shown; the rest are a count, because
+        /// a poll can turn up several at once and stacking popups over the desktop is
+        /// worse than one that says how many.
+        /// </summary>
+        public void Ping(DeviceInfo device, IReadOnlyList<DeviceNotification> arrived)
+        {
+            if (arrived.Count == 0)
+                return;
+
+            // The panel is already showing this device's shade.
+            if (IsPanelOpen && ReferenceEquals(device, _device))
+                return;
+
+            var newest = arrived
+                .OrderByDescending(n => n.When ?? DateTime.MinValue)
+                .First();
+
+            _pingDevice = device;
+            _pingExtra = arrived.Count - 1;
+
+            PingRow = new NotificationRow(newest, IconFor(newest.Package));
+
+            RaisePropertyChanged(nameof(PingExtraText));
+            RaisePropertyChanged(nameof(HasPingExtra));
+            RaisePropertyChanged(nameof(PingDeviceLabel));
+            RaisePropertyChanged(nameof(ShowPingDeviceLabel));
+
+            IsPingVisible = true;
+
+            // Restarted, so a second arrival extends the show rather than cutting it short.
+            _pingTimer.Stop();
+            _pingTimer.Start();
+        }
+
+        public void DismissPing()
+        {
+            _pingTimer.Stop();
+
+            if (!IsPingVisible)
+                return;
+
+            IsPingVisible = false;
+            PingRow = null;
+            _pingDevice = null;
+            _pingExtra = 0;
+        }
+
+        /// <summary>Clicking the ping opens the shade it came from.</summary>
+        public void OpenPingedDevice()
+        {
+            var device = _pingDevice;
+            DismissPing();
+
+            if (device != null)
+                Toggle(device);
         }
 
         public string PanelTitle => _device == null ? "Notifications" : $"{_device.Label} notifications";

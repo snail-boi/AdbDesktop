@@ -571,6 +571,13 @@ namespace AdbDesktop
 
         private void AudioDismiss_Click(object sender, MouseButtonEventArgs e) => _vm.Audio.IsPanelOpen = false;
 
+        /// <summary>The ping is a shortcut into the shade it came from.</summary>
+        private void NotificationPing_Click(object sender, MouseButtonEventArgs e)
+        {
+            _vm.Notifications.OpenPingedDevice();
+            e.Handled = true;
+        }
+
         private void NotificationsDismiss_Click(object sender, MouseButtonEventArgs e) =>
             _vm.Notifications.IsPanelOpen = false;
 

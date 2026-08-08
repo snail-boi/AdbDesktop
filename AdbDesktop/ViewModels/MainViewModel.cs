@@ -86,6 +86,7 @@ namespace AdbDesktop
             _registry = new DeviceRegistry(App.Config);
             _registry.DevicesChanged += OnDevicesChanged;
             _registry.TransportChanged += OnTransportChanged;
+            _registry.NotificationsArrived += OnNotificationsArrived;
 
             // Windows are keyed by the device's identity serial; mirroring needs whatever
             // adb transport currently reaches it.
@@ -496,6 +497,23 @@ namespace AdbDesktop
         /// window manager -- follows the primary device, which is what the old single
         /// device monitor reported.
         /// </summary>
+        /// <summary>
+        /// A notification landed on a phone. Announced by the bell's count regardless;
+        /// the ping is the opt-in popup that says what it was.
+        /// </summary>
+        private void OnNotificationsArrived(DeviceInfo device, IReadOnlyList<DeviceNotification> arrived)
+        {
+            if (!App.Config.Taskbar.NotificationPings)
+                return;
+
+            // The bell is what a ping points at, so with it hidden there is nowhere for
+            // the popup to be pointing.
+            if (!App.Config.Taskbar.ShowNotifications)
+                return;
+
+            Notifications.Ping(device, arrived);
+        }
+
         /// <summary>Devices whose windows have already been brought back this run.</summary>
         private readonly HashSet<string> _sessionRestored = new(StringComparer.Ordinal);
 
@@ -1156,6 +1174,7 @@ namespace AdbDesktop
             Desktop.IconActivated -= OnIconActivated;
             Connection.Deactivate();
             _registry.DevicesChanged -= OnDevicesChanged;
+            _registry.NotificationsArrived -= OnNotificationsArrived;
             _registry.Dispose();
         }
     }

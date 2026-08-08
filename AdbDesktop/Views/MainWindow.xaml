@@ -761,6 +761,96 @@
           can dismiss one or fire its action. Opening the shade on the phone is the one
           thing that can be offered instead.
         -->
+        <!--
+          ===== notification ping =====
+
+          Anchored where the panel is, so it reads as coming out of the same bell. No
+          backdrop: it is an announcement, not a mode, and it must not swallow a click
+          meant for whatever is underneath.
+        -->
+        <Border Width="320" MaxHeight="120"
+                VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                Margin="0,0,80,52"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource LineBrush}"
+                BorderThickness="1" CornerRadius="10"
+                Cursor="Hand"
+                DataContext="{Binding Notifications}"
+                MouseLeftButtonUp="NotificationPing_Click"
+                Visibility="{Binding IsPingVisible, Converter={StaticResource BoolToVis}}">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="24" ShadowDepth="4" Opacity="0.55" Color="Black"/>
+            </Border.Effect>
+
+            <Grid Margin="12,10" DataContext="{Binding PingRow}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- The app's own icon when it is on a desktop, its initial otherwise. -->
+                <Border Grid.Column="0" Width="32" Height="32" Margin="0,0,10,0"
+                        VerticalAlignment="Top" CornerRadius="7"
+                        Background="{StaticResource SurfaceHighBrush}">
+                    <Grid>
+                        <Image Source="{Binding Icon}" Width="24" Height="24"
+                               RenderOptions.BitmapScalingMode="HighQuality"
+                               Visibility="{Binding HasIcon,
+                                                    Converter={StaticResource BoolToVis}}"/>
+                        <TextBlock Text="{Binding Initial}" FontSize="14"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   Visibility="{Binding HasIcon,
+                                                        Converter={StaticResource InverseBoolToVis}}"/>
+                    </Grid>
+                </Border>
+
+                <StackPanel Grid.Column="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0" Text="{Binding AppName}"
+                                   FontSize="11.5" FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"/>
+
+                        <!-- Several landed at once; the rest are a count, not a stack. -->
+                        <TextBlock Grid.Column="1" FontSize="10.5" Margin="8,0,0,0"
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   Text="{Binding DataContext.PingExtraText,
+                                                  RelativeSource={RelativeSource AncestorType=Border}}"
+                                   Visibility="{Binding DataContext.HasPingExtra,
+                                                        RelativeSource={RelativeSource AncestorType=Border},
+                                                        Converter={StaticResource BoolToVis}}"/>
+                    </Grid>
+
+                    <TextBlock Text="{Binding Title}" FontSize="12" Margin="0,3,0,0"
+                               TextTrimming="CharacterEllipsis"
+                               Visibility="{Binding HasTitle,
+                                                    Converter={StaticResource BoolToVis}}"/>
+
+                    <TextBlock Text="{Binding Text}" FontSize="11" Margin="0,2,0,0"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               TextTrimming="CharacterEllipsis" MaxHeight="30"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding HasText,
+                                                    Converter={StaticResource BoolToVis}}"/>
+
+                    <!-- Which phone, but only when there is more than one to confuse. -->
+                    <TextBlock FontSize="10.5" Margin="0,4,0,0" Opacity="0.8"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               Text="{Binding DataContext.PingDeviceLabel,
+                                              RelativeSource={RelativeSource AncestorType=Border}}"
+                               Visibility="{Binding DataContext.ShowPingDeviceLabel,
+                                                    RelativeSource={RelativeSource AncestorType=Border},
+                                                    Converter={StaticResource BoolToVis}}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
         <Grid Visibility="{Binding Notifications.IsPanelOpen, Converter={StaticResource BoolToVis}}">
             <Rectangle Fill="#01000000" MouseLeftButtonDown="NotificationsDismiss_Click"/>
 

@@ -140,6 +140,13 @@ namespace AdbDesktop
         public bool ShowWindowTabs { get; set; } = true;
 
         public bool ShowNotifications { get; set; } = true;
+
+        /// <summary>
+        /// Announce a notification arriving with a short popup by the bell, rather than
+        /// only bumping the count on it. Off by default: the count is already there, and
+        /// something appearing over the desktop is the kind of thing to opt into.
+        /// </summary>
+        public bool NotificationPings { get; set; }
         public bool ShowBattery { get; set; } = true;
         public bool ShowClock { get; set; } = true;
 

@@ -599,8 +599,20 @@ namespace AdbDesktop
             if (!snapshot.Readable)
                 Debugger.show($"[NOTIF] {device.Label}: shade could not be read.");
 
-            await UiThread.RunAsync(() => device.SetNotifications(snapshot)).ConfigureAwait(false);
+            await UiThread.RunAsync(() =>
+            {
+                var arrived = device.SetNotifications(snapshot);
+
+                if (arrived.Count > 0)
+                    NotificationsArrived?.Invoke(device, arrived);
+            }).ConfigureAwait(false);
         }
+
+        /// <summary>
+        /// Raised on the UI thread when a read turns up notifications that were not there
+        /// before. Not raised for the first read after connecting, which is the backlog.
+        /// </summary>
+        public event Action<DeviceInfo, IReadOnlyList<DeviceNotification>>? NotificationsArrived;
 
         public void Dispose()
         {

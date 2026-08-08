@@ -305,9 +305,41 @@ namespace AdbDesktop
             }
         }
 
-        /// <summary>Called on the UI thread after each read. Always raises, so the panel refreshes.</summary>
-        public void SetNotifications(NotificationSnapshot snapshot)
+        /// <summary>
+        /// Keys seen in the previous snapshot. Replaced wholesale each read, so a
+        /// notification that is dismissed and posted again counts as new the second time.
+        /// </summary>
+        private readonly HashSet<string> _seenNotificationKeys = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Whether a snapshot has landed yet. The first one is the backlog that was
+        /// already on the phone, so it is recorded silently -- otherwise connecting would
+        /// announce everything posted since breakfast.
+        /// </summary>
+        private bool _hasNotificationBaseline;
+
+        /// <summary>
+        /// Called on the UI thread after each read. Always raises, so the panel refreshes.
+        /// Returns the notifications that were not in the previous snapshot; empty for the
+        /// first read after connecting.
+        /// </summary>
+        public IReadOnlyList<DeviceNotification> SetNotifications(NotificationSnapshot snapshot)
         {
+            // Only meaningful when the device actually answered: a failed read reports an
+            // empty list, and treating the recovery as a flood of arrivals would be wrong.
+            var arrived = snapshot.Readable && _hasNotificationBaseline
+                ? snapshot.Items.Where(i => !_seenNotificationKeys.Contains(i.Key)).ToList()
+                : new List<DeviceNotification>();
+
+            if (snapshot.Readable)
+            {
+                _seenNotificationKeys.Clear();
+                foreach (var item in snapshot.Items)
+                    _seenNotificationKeys.Add(item.Key);
+
+                _hasNotificationBaseline = true;
+            }
+
             _notifications = snapshot.Items;
             _notificationsReadable = snapshot.Readable;
             _notificationsRedacted = snapshot.Redacted;
@@ -319,6 +351,8 @@ namespace AdbDesktop
             RaisePropertyChanged(nameof(HasNotifications));
             RaisePropertyChanged(nameof(NotificationBadgeText));
             RaisePropertyChanged(nameof(NotificationsTooltip));
+
+            return arrived;
         }
 
         /// <summary>

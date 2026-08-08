@@ -169,6 +169,13 @@
                     <CheckBox Style="{StaticResource DarkCheckBoxStyle}" Margin="0,0,0,10"
                               Content="Notifications"
                               IsChecked="{Binding Taskbar.ShowNotifications, Mode=TwoWay}"/>
+                    <CheckBox Style="{StaticResource DarkCheckBoxStyle}" Margin="25,0,0,4"
+                              Content="Notification pings"
+                              IsEnabled="{Binding Taskbar.ShowNotifications}"
+                              IsChecked="{Binding Taskbar.NotificationPings, Mode=TwoWay}"/>
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="48,0,0,10"
+                               Text="Pops up beside the bell when a notification arrives, showing what it was, and fades after a few seconds. Click it to open that phone's shade. Without this the bell still counts them, but only if you look."/>
+
                     <CheckBox Style="{StaticResource DarkCheckBoxStyle}" Margin="0,0,0,10"
                               Content="Battery"
                               IsChecked="{Binding Taskbar.ShowBattery, Mode=TwoWay}"/>
