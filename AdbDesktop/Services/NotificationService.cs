@@ -105,6 +105,30 @@ namespace AdbDesktop
             new(@"\bkey=(?<key>[^\s:]+)", RegexOptions.Compiled);
 
         /// <summary>
+        /// The channel id, off the same NotificationRecord line. Worth having only to
+        /// drop the entries in <see cref="SuppressedChannels"/>.
+        /// </summary>
+        private static readonly Regex ChannelRegex =
+            new(@"\bchannel=(?<channel>\S+)", RegexOptions.Compiled);
+
+        /// <summary>
+        /// Channels that are noise on a desktop, dropped before they reach the shade.
+        ///
+        /// Matched on the channel id rather than the title, because ids are constants in
+        /// the framework while titles are translated -- a title match would work on an
+        /// English phone and silently stop working on any other.
+        ///
+        /// DEVELOPER_IMPORTANT is "Wireless debugging connected" and its USB counterpart.
+        /// It is permanent, it is there precisely because adbDesktop is connected, and it
+        /// offers to turn off the thing keeping the session alive.
+        ///
+        /// MediaOngoingActivity is SystemUI's media chip. Its title is the channel id and
+        /// it has no text, which is what it looked like in the panel too.
+        /// </summary>
+        private static readonly HashSet<string> SuppressedChannels =
+            new(StringComparer.Ordinal) { "DEVELOPER_IMPORTANT", "MediaOngoingActivity" };
+
+        /// <summary>
         /// "when=1786045564721/1786045564721" -- the record's own line, not an extra. The
         /// second half is the same instant formatted, so only the first is taken.
         /// </summary>
@@ -189,6 +213,7 @@ namespace AdbDesktop
             DateTime? when = null;
             var isSummary = false;
             var open = false;
+            var suppressed = false;
 
             void Flush()
             {
@@ -197,7 +222,7 @@ namespace AdbDesktop
 
                 open = false;
 
-                if (string.IsNullOrEmpty(package))
+                if (string.IsNullOrEmpty(package) || suppressed)
                     return;
 
                 var item = new DeviceNotification
@@ -231,6 +256,9 @@ namespace AdbDesktop
 
                     key = KeyRegex.Match(line) is { Success: true } k ? k.Groups["key"].Value : string.Empty;
                     package = PackageRegex.Match(line) is { Success: true } p ? p.Groups["pkg"].Value : string.Empty;
+
+                    suppressed = ChannelRegex.Match(line) is { Success: true } c
+                                 && SuppressedChannels.Contains(c.Groups["channel"].Value);
 
                     title = string.Empty;
                     text = string.Empty;
