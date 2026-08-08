@@ -279,6 +279,21 @@
                             Style="{StaticResource SecondaryButtonStyle}"
                             Padding="14,7" HorizontalAlignment="Left"
                             Command="{Binding ShowWelcomeCommand}"/>
+
+                    <TextBlock Text="When adbDesktop reopens"
+                               Style="{StaticResource SectionHeadingStyle}" Margin="0,22,0,10"/>
+
+                    <ComboBox Width="240" HorizontalAlignment="Left"
+                              ItemsSource="{Binding SessionRestoreNames}"
+                              SelectedItem="{Binding SessionRestoreMode, Mode=TwoWay}"/>
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="0,8,0,0"
+                               Text="Off forgets everything: every window opens in the middle of the desktop as if it were new. Window position remembers where each app's window was and how big it was, including whether it was snapped, and puts it back there the next time you open that app. Window position and apps also reopens whatever was open when you last closed adbDesktop."/>
+
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="0,8,0,0"
+                               Foreground="{StaticResource AccentBrush}"
+                               TextWrapping="Wrap"
+                               Text="Apps come back per device, as each phone connects, so one that is plugged in later still gets its windows. Each device is restored once per run -- reconnecting a phone will not reopen things you have closed since. Anything removed from the desktop in the meantime is skipped."
+                               Visibility="{Binding IsSessionRestoreApps, Converter={StaticResource BoolToVis}}"/>
                 </StackPanel>
 
                 <!-- ===== advanced ===== -->

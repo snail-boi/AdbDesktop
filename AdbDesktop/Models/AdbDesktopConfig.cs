@@ -231,6 +231,65 @@ namespace AdbDesktop
         public string Shape { get; set; } = IconShapes.Squircle;
     }
 
+    /// <summary>How much of the last session comes back on the next launch.</summary>
+    public enum SessionRestore
+    {
+        /// <summary>Nothing is remembered. Every window opens cascaded, as if new.</summary>
+        Off = 0,
+
+        /// <summary>
+        /// Remember where each app's window was and how big it was, and put it back there
+        /// the next time that app is opened. Nothing opens by itself.
+        /// </summary>
+        Position = 1,
+
+        /// <summary>
+        /// As Position, and reopen the apps that were open when AdbDesktop last closed,
+        /// once their device is back.
+        /// </summary>
+        Apps = 2,
+    }
+
+    /// <summary>
+    /// Where one app's window was, keyed by the app and the device it runs on -- the same
+    /// package on two phones is two windows, so it is two entries.
+    /// </summary>
+    public class WindowStateEntry
+    {
+        public string DeviceSerial { get; set; } = string.Empty;
+        public string Package { get; set; } = string.Empty;
+
+        public double X { get; set; }
+        public double Y { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+
+        /// <summary>Tiled or maximised, so a snapped window comes back snapped.</summary>
+        public SnapZone Snap { get; set; }
+
+        /// <summary>Open when AdbDesktop last closed. Only <see cref="SessionRestore.Apps"/> acts on it.</summary>
+        public bool WasOpen { get; set; }
+
+        /// <summary>
+        /// Stacking order at save time, lowest first. Restoring in this order leaves the
+        /// window that was on top on top.
+        /// </summary>
+        public int Order { get; set; }
+    }
+
+    public class SessionConfig
+    {
+        public SessionRestore Restore { get; set; } = SessionRestore.Position;
+
+        public List<WindowStateEntry> Windows { get; set; } = new();
+
+        /// <summary>
+        /// Cap on remembered windows. Positions are kept for apps that are not open, so
+        /// without a limit this would grow for every app ever opened.
+        /// </summary>
+        public const int MaxRemembered = 64;
+    }
+
     /// <summary>
     /// Knobs that can make things worse. Nothing here needs touching for normal use.
     /// </summary>
@@ -295,6 +354,7 @@ namespace AdbDesktop
         public TaskbarConfig Taskbar { get; set; } = new();
         public IconsConfig Icons { get; set; } = new();
         public AdvancedConfig Advanced { get; set; } = new();
+        public SessionConfig Session { get; set; } = new();
     }
 
     /// <summary>
@@ -353,6 +413,24 @@ namespace AdbDesktop
             config.Taskbar ??= new TaskbarConfig();
             config.Icons ??= new IconsConfig();
             config.Advanced ??= new AdvancedConfig();
+            config.Session ??= new SessionConfig();
+            config.Session.Windows ??= new List<WindowStateEntry>();
+
+            // A hand-edited or older file can hold junk; a zero-sized remembered window
+            // would restore a window nobody can see.
+            config.Session.Windows.RemoveAll(w =>
+                w == null
+                || string.IsNullOrWhiteSpace(w.Package)
+                || w.Width < AppWindowViewModel.MinWidth
+                || w.Height < AppWindowViewModel.MinHeight);
+
+            if (config.Session.Windows.Count > SessionConfig.MaxRemembered)
+            {
+                // Oldest first: Order is assigned front-to-back at save time, so the
+                // windows most recently in front are the ones worth keeping.
+                config.Session.Windows.RemoveRange(
+                    0, config.Session.Windows.Count - SessionConfig.MaxRemembered);
+            }
 
             config.Advanced.ResizeDelayMs = Math.Clamp(config.Advanced.ResizeDelayMs,
                                                        AdvancedConfig.MinResizeDelayMs,

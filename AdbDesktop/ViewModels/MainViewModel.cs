@@ -496,6 +496,45 @@ namespace AdbDesktop
         /// window manager -- follows the primary device, which is what the old single
         /// device monitor reported.
         /// </summary>
+        /// <summary>Devices whose windows have already been brought back this run.</summary>
+        private readonly HashSet<string> _sessionRestored = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Reopens the apps that were open when AdbDesktop last closed, per device, as
+        /// each one becomes available -- a device that is plugged in ten minutes from now
+        /// still gets its windows back.
+        ///
+        /// Once per device per run: reconnecting a phone is not a reason to reopen
+        /// everything the user has since closed.
+        /// </summary>
+        private void RestoreSessionWindows(IReadOnlyList<DeviceInfo> added)
+        {
+            if (App.Config.Session.Restore != SessionRestore.Apps)
+                return;
+
+            foreach (var device in added)
+            {
+                if (!_sessionRestored.Add(device.Serial))
+                    continue;
+
+                foreach (var entry in WindowManager.RestorableFor(device.Serial))
+                {
+                    // The icon carries the caption and artwork the window needs, and its
+                    // absence means the app was removed from the desktop since -- in
+                    // which case there is nothing to reopen.
+                    var icon = Desktop.Icons.FirstOrDefault(i =>
+                        string.Equals(i.Package, entry.Package, StringComparison.Ordinal)
+                        && string.Equals(i.DeviceSerial, device.Serial, StringComparison.Ordinal));
+
+                    if (icon == null)
+                        continue;
+
+                    WindowManager.Open(icon);
+                    Debugger.show($"[WIN] Restored window for {icon.Package}.");
+                }
+            }
+        }
+
         private void OnDevicesChanged()
         {
             RefreshAddedDevices();
@@ -507,6 +546,7 @@ namespace AdbDesktop
             Desktop.ApplyDeviceStates(added);
             Audio.Sync(added);
             Notifications.Sync(added);
+            RestoreSessionWindows(added);
             RaisePropertyChanged(nameof(HasDevices));
             RaisePropertyChanged(nameof(HasMultipleDevices));
             RaisePropertyChanged(nameof(ShowDeviceNumbers));
@@ -1090,6 +1130,10 @@ namespace AdbDesktop
             ResolvePick(null);
             ResolveConfirm(false);
             ResolveChoice(null);
+
+            // Before CloseAll: once the windows are gone so are their bounds.
+            WindowManager.SaveSession();
+
             WindowManager.CloseAll();
             Taskbar.Stop();
             Audio.Dispose();

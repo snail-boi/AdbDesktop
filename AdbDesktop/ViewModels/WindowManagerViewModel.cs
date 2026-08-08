@@ -136,18 +136,22 @@ namespace AdbDesktop
                 Height = Math.Min(620, Math.Max(AppWindowViewModel.MinHeight, _surfaceHeight * 0.65)),
             };
 
-            // Cascade so a second window does not land exactly on the first.
-            var step = _cascadeIndex % CascadeWrap;
-            _cascadeIndex++;
+            // Where the app's window was last time, if that is being remembered.
+            if (!TryApplyRemembered(window, out var remembered))
+            {
+                // Cascade so a second window does not land exactly on the first.
+                var step = _cascadeIndex % CascadeWrap;
+                _cascadeIndex++;
 
-            window.X = Math.Max(0, 60 + step * CascadeStep);
-            window.Y = Math.Max(0, 40 + step * CascadeStep);
+                window.X = Math.Max(0, 60 + step * CascadeStep);
+                window.Y = Math.Max(0, 40 + step * CascadeStep);
 
-            // If the cascade would push it off the bottom/right, pull it back on.
-            if (window.X + window.Width > _surfaceWidth)
-                window.X = Math.Max(0, _surfaceWidth - window.Width);
-            if (window.Y + window.Height > _surfaceHeight)
-                window.Y = Math.Max(0, _surfaceHeight - window.Height);
+                // If the cascade would push it off the bottom/right, pull it back on.
+                if (window.X + window.Width > _surfaceWidth)
+                    window.X = Math.Max(0, _surfaceWidth - window.Width);
+                if (window.Y + window.Height > _surfaceHeight)
+                    window.Y = Math.Max(0, _surfaceHeight - window.Height);
+            }
 
             window.SaveRestoreBounds();
 
@@ -156,6 +160,16 @@ namespace AdbDesktop
             RaisePropertyChanged(nameof(HasWindows));
 
             Activate(window);
+
+            // After the window is in the list: snapping consults the others.
+            if (remembered != SnapZone.None)
+            {
+                ApplySnap(window, remembered);
+
+                // Restoring a tiled window is not the user tiling one, so the offer to
+                // fill the other half would be noise.
+                CloseSnapAssist();
+            }
 
             var transport = TransportResolver?.Invoke(serial) ?? serial;
 
@@ -167,7 +181,18 @@ namespace AdbDesktop
 
         public void Close(AppWindowViewModel? window)
         {
-            if (window == null || !Windows.Remove(window))
+            if (window == null)
+                return;
+
+            // Before it leaves the list, while its bounds still mean something. Closed by
+            // hand, so it does not come back on its own -- only its position is kept.
+            if (Windows.Contains(window))
+            {
+                RememberWindow(window, wasOpen: false);
+                App.SaveConfig();
+            }
+
+            if (!Windows.Remove(window))
                 return;
 
             // The window may be the one the assist was offering, or the one it was
@@ -313,6 +338,130 @@ namespace AdbDesktop
 
             window.X = Math.Clamp(window.X, minX, maxX);
             window.Y = Math.Clamp(window.Y, 0, maxY);
+        }
+
+        // ---------- session restore ----------
+        //
+        // Two separate things, behind one setting. Position remembers where each app's
+        // window was so it opens there next time instead of cascading; Apps additionally
+        // reopens what was open at shutdown, once the device is back.
+
+        private static SessionConfig Session => App.Config.Session;
+
+        private static bool IsSameEntry(WindowStateEntry entry, string serial, string package) =>
+            string.Equals(entry.Package, package, StringComparison.Ordinal)
+            && string.Equals(entry.DeviceSerial, serial, StringComparison.Ordinal);
+
+        /// <summary>
+        /// Puts a window back where its app was last time. False when there is nothing
+        /// remembered, or remembering is off, in which case the caller cascades instead.
+        /// </summary>
+        private bool TryApplyRemembered(AppWindowViewModel window, out SnapZone snap)
+        {
+            snap = SnapZone.None;
+
+            if (Session.Restore == SessionRestore.Off)
+                return false;
+
+            var entry = Session.Windows.FirstOrDefault(
+                e => IsSameEntry(e, window.DeviceSerial, window.Package));
+
+            if (entry == null)
+                return false;
+
+            window.Width = entry.Width;
+            window.Height = entry.Height;
+            window.X = entry.X;
+            window.Y = entry.Y;
+
+            // The surface may be a different size than it was last run.
+            ClampPosition(window);
+
+            snap = entry.Snap;
+            return true;
+        }
+
+        /// <summary>
+        /// Records a window's current bounds. <paramref name="wasOpen"/> is what decides
+        /// whether Apps mode reopens it, so closing a window clears it and shutdown sets
+        /// it on whatever is still on screen.
+        /// </summary>
+        private void RememberWindow(AppWindowViewModel window, bool wasOpen, int order = 0)
+        {
+            if (Session.Restore == SessionRestore.Off)
+                return;
+
+            var entry = Session.Windows.FirstOrDefault(
+                e => IsSameEntry(e, window.DeviceSerial, window.Package));
+
+            if (entry == null)
+            {
+                entry = new WindowStateEntry
+                {
+                    DeviceSerial = window.DeviceSerial,
+                    Package = window.Package,
+                };
+                Session.Windows.Add(entry);
+            }
+
+            // A snapped window's own X/Y/Width/Height are the tile, not anything worth
+            // restoring on a differently-sized surface. The floating bounds it would
+            // return to are what gets remembered, and the zone is stored beside them.
+            var bounds = window.IsSnapped ? window.RestoreBounds
+                                          : new Rect(window.X, window.Y, window.Width, window.Height);
+
+            entry.X = bounds.X;
+            entry.Y = bounds.Y;
+            entry.Width = bounds.Width;
+            entry.Height = bounds.Height;
+            entry.Snap = window.Snap;
+            entry.WasOpen = wasOpen;
+            entry.Order = order;
+        }
+
+        /// <summary>
+        /// Writes down everything still open. Called at shutdown, before the windows are
+        /// torn down and their bounds are gone.
+        /// </summary>
+        public void SaveSession()
+        {
+            if (Session.Restore == SessionRestore.Off)
+            {
+                // Nothing is remembered in this mode, and leaving last run's list behind
+                // would resurrect it if the setting were turned back on.
+                if (Session.Windows.Count > 0)
+                {
+                    Session.Windows.Clear();
+                    App.SaveConfig();
+                }
+                return;
+            }
+
+            // Back to front, so the order recorded matches how they were stacked. A
+            // minimised window still counts as open -- it was, and it comes back.
+            var open = Windows.OrderBy(w => w.ZIndex).ToList();
+
+            var order = 0;
+            foreach (var window in open)
+                RememberWindow(window, wasOpen: true, order: order++);
+
+            App.SaveConfig();
+        }
+
+        /// <summary>
+        /// The apps that were open on a device when AdbDesktop last closed, back to front.
+        /// Empty unless the setting is Apps.
+        /// </summary>
+        public IReadOnlyList<WindowStateEntry> RestorableFor(string deviceSerial)
+        {
+            if (Session.Restore != SessionRestore.Apps)
+                return Array.Empty<WindowStateEntry>();
+
+            return Session.Windows
+                .Where(e => e.WasOpen
+                            && string.Equals(e.DeviceSerial, deviceSerial, StringComparison.Ordinal))
+                .OrderBy(e => e.Order)
+                .ToList();
         }
 
         // ---------- staged session starts ----------

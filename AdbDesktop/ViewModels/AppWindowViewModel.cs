@@ -370,6 +370,20 @@ namespace AdbDesktop
             _restoreHeight = _height;
         }
 
+        /// <summary>
+        /// The floating bounds behind a snapped window. What gets remembered for session
+        /// restore: a tile is a fraction of whatever the surface was, so the bounds worth
+        /// keeping are the ones the window would return to.
+        /// </summary>
+        public Rect RestoreBounds
+        {
+            get
+            {
+                NormaliseRestoreSize();
+                return new Rect(_restoreX, _restoreY, _restoreWidth, _restoreHeight);
+            }
+        }
+
         public void ApplyRestoreBounds()
         {
             NormaliseRestoreSize();

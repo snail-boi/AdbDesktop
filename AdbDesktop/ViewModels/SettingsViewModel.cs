@@ -105,6 +105,52 @@ namespace AdbDesktop
             }
         }
 
+        // ---------- session restore ----------
+
+        /// <summary>
+        /// Bound by name rather than by the enum, so the list reads as prose in the UI
+        /// and the stored value stays a proper enum.
+        /// </summary>
+        public IReadOnlyList<string> SessionRestoreNames { get; } =
+            new[] { "Off", "Window position", "Window position and apps" };
+
+        private static readonly SessionRestore[] SessionRestoreValues =
+            { SessionRestore.Off, SessionRestore.Position, SessionRestore.Apps };
+
+        public string SessionRestoreMode
+        {
+            get
+            {
+                var index = Array.IndexOf(SessionRestoreValues, App.Config.Session.Restore);
+                return SessionRestoreNames[index < 0 ? 1 : index];
+            }
+            set
+            {
+                var index = SessionRestoreNames.ToList().IndexOf(value);
+                if (index < 0)
+                    return;
+
+                var mode = SessionRestoreValues[index];
+                if (App.Config.Session.Restore == mode)
+                    return;
+
+                App.Config.Session.Restore = mode;
+
+                // Turning it off drops what was already remembered, so switching back on
+                // starts clean rather than restoring a session from days ago.
+                if (mode == SessionRestore.Off)
+                    App.Config.Session.Windows.Clear();
+
+                App.SaveConfig();
+
+                RaisePropertyChanged(nameof(SessionRestoreMode));
+                RaisePropertyChanged(nameof(IsSessionRestoreApps));
+            }
+        }
+
+        public bool IsSessionRestoreApps =>
+            App.Config.Session.Restore == SessionRestore.Apps;
+
         // ---------- advanced: resize delay ----------
 
         /// <summary>
