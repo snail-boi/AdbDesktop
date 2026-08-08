@@ -321,6 +321,19 @@
                                Text="Very low values mostly stop making a difference: resizes are already limited by how fast the window itself changes size and by how quickly the phone answers, so past a point the delay is no longer what is holding things up. Harmless to try -- if anything misbehaves, put it back to 220."
                                Visibility="{Binding IsResizeDelayRisky, Converter={StaticResource BoolToVis}}"/>
 
+                    <TextBlock Text="Diagnostics" Style="{StaticResource SectionHeadingStyle}"
+                               Margin="0,22,0,10"/>
+
+                    <CheckBox Style="{StaticResource DarkCheckBoxStyle}" Margin="0,0,0,4"
+                              Content="Full diagnostic logging"
+                              IsChecked="{Binding DebugLogging, Mode=TwoWay}"/>
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="25,0,0,6"
+                               Text="Writes every adb command and its output, plus scrcpy's own debug messages, to advanced_debug.log in the data folder instead of the normal log. Verbose, and started fresh each time it is switched on. Turn this on before reproducing a problem: when a window fails to connect, the reason the device gave is a debug-level message and is otherwise thrown away."/>
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="25,0,0,0"
+                               Foreground="{StaticResource AccentBrush}"
+                               Text="Applies to adb straight away; windows already open keep the level they started with, so open the app you want to capture after switching this on."
+                               Visibility="{Binding DebugLogging, Converter={StaticResource BoolToVis}}"/>
+
                     <TextBlock Text="Version" Style="{StaticResource LabelTextStyle}" Margin="0,18,0,5"/>
                     <TextBlock Text="{Binding Version}" FontSize="11.5"
                                Foreground="{StaticResource MutedTextBrush}"/>

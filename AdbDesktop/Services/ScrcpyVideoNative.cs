@@ -198,8 +198,10 @@ namespace AdbDesktop
             if (string.IsNullOrEmpty(text))
                 return;
 
-            // Verbose/debug would be very chatty; only surface info and above.
-            if (level >= LogInfo)
+            // Verbose/debug would be very chatty; only surface info and above, unless
+            // diagnostic logging is on -- the reason a session failed to connect is a
+            // debug-level line, so at Info the interesting case is exactly what is lost.
+            if (level >= (Debugger.AdvancedEnabled ? LogDebug : LogInfo))
                 Debugger.show($"[scrcpy] {text}");
             else
                 Debugger.advanced($"[scrcpy] {text}");

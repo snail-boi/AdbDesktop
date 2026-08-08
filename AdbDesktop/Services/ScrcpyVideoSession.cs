@@ -74,6 +74,12 @@ namespace AdbDesktop
             var settings = new ScrcpyVideoNative.Settings();
             ScrcpyVideoNative.scv_settings_init(ref settings);
 
+            // Native filters by level before it ever calls back, so this has to be
+            // raised here as well as in the log sink.
+            settings.LogLevel = Debugger.AdvancedEnabled
+                ? (byte) ScrcpyVideoNative.LogDebug
+                : (byte) ScrcpyVideoNative.LogInfo;
+
             settings.Serial = string.IsNullOrWhiteSpace(serial) ? null : serial;
             settings.AdbPath = AppPaths.AdbPath;
             settings.ServerPath = ScrcpyVideoNative.ServerPath;

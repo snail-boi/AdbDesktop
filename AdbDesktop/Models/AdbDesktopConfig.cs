@@ -248,6 +248,16 @@ namespace AdbDesktop
         /// </summary>
         public int ResizeDelayMs { get; set; } = DefaultResizeDelayMs;
 
+        /// <summary>
+        /// Full diagnostic logging: every adb command and its output, plus scrcpy's own
+        /// debug-level messages, into advanced_debug.log instead of the normal log.
+        ///
+        /// Off by default because it is verbose and rewritten from scratch each time it
+        /// is turned on. It is what to enable when a session fails to connect: the reason
+        /// the device-side server gave is a debug-level line, and is otherwise dropped.
+        /// </summary>
+        public bool DebugLogging { get; set; }
+
         public const int DefaultResizeDelayMs = 220;
 
         /// <summary>

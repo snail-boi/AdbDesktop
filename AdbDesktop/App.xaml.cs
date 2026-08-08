@@ -18,6 +18,10 @@ namespace AdbDesktop
             Config = AdbDesktopConfigManager.Load();
             AdbHelper.AdbPath = Config.Paths.Adb;
 
+            // Before the first show() below, so the advanced log starts from the
+            // very first line rather than halfway through startup.
+            Debugger.AdvancedEnabled = Config.Advanced.DebugLogging;
+
             Debugger.show($"[STARTUP] AdbDesktop starting. adb={AdbHelper.AdbPath}, data={AppPaths.DataRoot}");
 
             DispatcherUnhandledException += OnUnhandledException;

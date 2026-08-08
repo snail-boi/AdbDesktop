@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
+using System.Windows.Threading;
 
 namespace AdbDesktop
 {
@@ -158,7 +160,7 @@ namespace AdbDesktop
             var transport = TransportResolver?.Invoke(serial) ?? serial;
 
             if (!icon.IsBuiltIn && !string.IsNullOrEmpty(transport))
-                window.StartMirroring(transport);
+                QueueMirroringStart(window, transport);
 
             return window;
         }
@@ -171,6 +173,11 @@ namespace AdbDesktop
             // The window may be the one the assist was offering, or the one it was
             // offering a gap next to; either way the offer is stale.
             CloseSnapAssist();
+
+            // Closing the window that the queue is waiting on must release it, or every
+            // session behind it waits out the timeout.
+            if (ReferenceEquals(window, _startingWindow))
+                FinishStart();
 
             // Tears down the scrcpy session and, because vd_destroy_content is set,
             // the virtual display and the app running on it.
@@ -203,7 +210,7 @@ namespace AdbDesktop
                          .ToList())
             {
                 window.StopMirroring();
-                window.StartMirroring(transport);
+                QueueMirroringStart(window, transport);
             }
         }
 
@@ -306,6 +313,83 @@ namespace AdbDesktop
 
             window.X = Math.Clamp(window.X, minX, maxX);
             window.Y = Math.Clamp(window.Y, 0, maxY);
+        }
+
+        // ---------- staged session starts ----------
+        //
+        // Sessions are brought up one at a time, because two starting together fight
+        // over the device.
+        //
+        // Every session pushes the scrcpy server to the same fixed path on the device,
+        // /data/local/tmp/scrcpy-server.jar, and then runs it from there by CLASSPATH.
+        // Upstream is one session per process so nothing else was ever touching that
+        // file. Here, the next window's adb push truncates and rewrites it while the
+        // previous window's app_process is still loading classes out of it, and that
+        // process dies -- the log shows each session terminating about 230ms after the
+        // next one starts pushing, with only the last one surviving.
+        //
+        // Waiting for video before starting the next one removes the overlap. The window
+        // still opens immediately and shows its status, so the only visible effect is
+        // that several windows opened at once come up in sequence.
+
+        private readonly Queue<(AppWindowViewModel Window, string Transport)> _pendingStarts = new();
+        private AppWindowViewModel? _startingWindow;
+        private DispatcherTimer? _startTimeout;
+
+        /// <summary>
+        /// Long enough that a slow device is not cut off, short enough that a session
+        /// which never reports anything cannot wedge the queue for good.
+        /// </summary>
+        private static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(12);
+
+        public void QueueMirroringStart(AppWindowViewModel window, string transport)
+        {
+            _pendingStarts.Enqueue((window, transport));
+            PumpStarts();
+        }
+
+        private void PumpStarts()
+        {
+            while (_startingWindow == null && _pendingStarts.Count > 0)
+            {
+                var (window, transport) = _pendingStarts.Dequeue();
+
+                // It may have been closed while it waited its turn.
+                if (!Windows.Contains(window))
+                    continue;
+
+                _startingWindow = window;
+                window.MirroringSettled += OnMirroringSettled;
+
+                _startTimeout ??= new DispatcherTimer { Interval = StartTimeout };
+                _startTimeout.Tick -= OnStartTimeout;
+                _startTimeout.Tick += OnStartTimeout;
+                _startTimeout.Stop();
+                _startTimeout.Start();
+
+                window.StartMirroring(transport);
+            }
+        }
+
+        private void OnMirroringSettled(AppWindowViewModel window)
+        {
+            if (ReferenceEquals(window, _startingWindow))
+                FinishStart();
+        }
+
+        private void OnStartTimeout(object? sender, EventArgs e) => FinishStart();
+
+        private void FinishStart()
+        {
+            _startTimeout?.Stop();
+
+            if (_startingWindow != null)
+            {
+                _startingWindow.MirroringSettled -= OnMirroringSettled;
+                _startingWindow = null;
+            }
+
+            PumpStarts();
         }
 
         // ---------- tiling ----------

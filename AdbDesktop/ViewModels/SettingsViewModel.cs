@@ -136,6 +136,28 @@ namespace AdbDesktop
         public int MinResizeDelayMs => AdvancedConfig.MinResizeDelayMs;
         public int MaxResizeDelayMs => AdvancedConfig.MaxResizeDelayMs;
 
+        // ---------- advanced: diagnostic logging ----------
+
+        /// <summary>
+        /// Applies immediately to adb tracing, and to scrcpy's log level on the next
+        /// session opened -- an already-running session was created at the old level.
+        /// </summary>
+        public bool DebugLogging
+        {
+            get => App.Config.Advanced.DebugLogging;
+            set
+            {
+                if (App.Config.Advanced.DebugLogging == value)
+                    return;
+
+                App.Config.Advanced.DebugLogging = value;
+                App.SaveConfig();
+
+                Debugger.AdvancedEnabled = value;
+                RaisePropertyChanged(nameof(DebugLogging));
+            }
+        }
+
         /// <summary>Below the default, where the warning is worth showing.</summary>
         public bool IsResizeDelayLow =>
             App.Config.Advanced.ResizeDelayMs < AdvancedConfig.DefaultResizeDelayMs;

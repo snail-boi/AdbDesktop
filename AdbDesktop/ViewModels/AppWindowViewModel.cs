@@ -236,6 +236,15 @@ namespace AdbDesktop
         }
 
         /// <summary>
+        /// Raised once a start attempt has settled, whether it worked or not. The window
+        /// manager waits for this before bringing up the next session; see
+        /// WindowManagerViewModel.QueueMirroringStart for why they cannot overlap.
+        /// </summary>
+        public event Action<AppWindowViewModel>? MirroringSettled;
+
+        private void RaiseSettled() => MirroringSettled?.Invoke(this);
+
+        /// <summary>
         /// Starts mirroring: a virtual display sized to this window's content area, with
         /// the app launched onto it.
         /// </summary>
@@ -251,6 +260,7 @@ namespace AdbDesktop
             if (!session.Open(serial, Package, (int) ContentWidth, (int) ContentHeight))
             {
                 Status = "Could not start mirroring - see the log.";
+                RaiseSettled();
                 return;
             }
 
@@ -269,15 +279,21 @@ namespace AdbDesktop
                     break;
                 case ScrcpyVideoNative.Event.StreamStarted:
                     Status = string.Empty;
+                    // Video is flowing, so the device has finished loading the server
+                    // off disk. This is the earliest point another session may push.
+                    RaiseSettled();
                     break;
                 case ScrcpyVideoNative.Event.ConnectionFailed:
                     Status = "Could not connect to the device.";
+                    RaiseSettled();
                     break;
                 case ScrcpyVideoNative.Event.Disconnected:
                     Status = "Disconnected.";
+                    RaiseSettled();
                     break;
                 case ScrcpyVideoNative.Event.Error:
                     Status = "Mirroring error - see the log.";
+                    RaiseSettled();
                     break;
             }
         }
