@@ -1,0 +1,128 @@
+﻿<UserControl x:Class="AdbDesktop.DisplayOptionsEditor"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:AdbDesktop">
+
+    <!--
+      The whole option set, shared by the Settings page (editing the global defaults)
+      and the per-app dialog (editing one app's override). Nothing here knows which it
+      is: every list carries a "Default (x)" entry from the view model, and x is filled
+      in from whichever layer sits underneath.
+    -->
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <Style x:Key="HintStyle" TargetType="TextBlock"
+               BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,6,0,0"/>
+            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}"/>
+        </Style>
+
+        <Style x:Key="GroupStyle" TargetType="StackPanel">
+            <Setter Property="Margin" Value="0,0,0,20"/>
+        </Style>
+    </UserControl.Resources>
+
+    <StackPanel>
+
+        <!-- ===== video quality ===== -->
+        <StackPanel Style="{StaticResource GroupStyle}">
+            <TextBlock Text="Video quality" Style="{StaticResource LabelTextStyle}"/>
+
+            <StackPanel Orientation="Horizontal">
+                <TextBox Width="140"
+                         Text="{Binding BitRateText, Mode=TwoWay,
+                                        UpdateSourceTrigger=LostFocus}"/>
+
+                <!--
+                  The unit is a button rather than a second combo box: it has exactly two
+                  states and pressing it rewrites the number it sits beside, so it reads
+                  as an action on the field rather than as another thing to fill in.
+                -->
+                <Button Content="{Binding BitRateUnit}"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Width="64" Padding="0,7" Margin="6,0,0,0"
+                        ToolTip="Switch between Kbps and Mbps"
+                        Command="{Binding ToggleBitRateUnitCommand}"/>
+            </StackPanel>
+
+            <TextBlock Style="{StaticResource HintStyle}"
+                       Text="How much data the phone spends on the picture. Higher means fewer blocky patches when a lot is moving on screen, at the cost of more work for the phone and more traffic over the connection. Leave it empty to use the default."/>
+
+            <TextBlock Style="{StaticResource HintStyle}"
+                       Foreground="{StaticResource AccentBrush}"
+                       Text="{Binding BitRateHint}"/>
+        </StackPanel>
+
+        <!-- ===== frame rate ===== -->
+        <StackPanel Style="{StaticResource GroupStyle}">
+            <TextBlock Text="Frame rate (fps)" Style="{StaticResource LabelTextStyle}"/>
+
+            <TextBox Width="140" HorizontalAlignment="Left"
+                     Text="{Binding MaxFpsText, Mode=TwoWay,
+                                    UpdateSourceTrigger=LostFocus}"/>
+
+            <TextBlock Style="{StaticResource HintStyle}"
+                       Text="The most frames per second the phone will send. Enter 0 for unlimited, which lets it send as fast as it can draw. Lower is easier on the phone's battery and on a weak wireless connection; it does not make the picture blurrier, only less smooth. Leave it empty to use the default."/>
+
+            <TextBlock Style="{StaticResource HintStyle}"
+                       Foreground="{StaticResource AccentBrush}"
+                       Text="{Binding MaxFpsHint}"/>
+        </StackPanel>
+
+        <!-- ===== codec ===== -->
+        <StackPanel Style="{StaticResource GroupStyle}">
+            <TextBlock Text="Video codec" Style="{StaticResource LabelTextStyle}"/>
+
+            <ComboBox Width="210" HorizontalAlignment="Left"
+                      ItemsSource="{Binding VideoCodecOptions}"
+                      SelectedItem="{Binding VideoCodec, Mode=TwoWay}"/>
+
+            <TextBlock Style="{StaticResource HintStyle}"
+                       Text="How the video is compressed before it is sent. H.265 and AV1 can look the same at a lower bit rate than H.264, which helps over wireless."/>
+
+            <!--
+              Worth a blunt warning rather than a footnote: an unsupported codec is not
+              a quality regression, it is a window that never connects, and nothing on
+              screen would otherwise point back at this setting.
+            -->
+            <TextBlock Style="{StaticResource HintStyle}"
+                       Foreground="{StaticResource AccentBrush}"
+                       Text="Not every phone can encode these. If a window stops connecting after changing this, put it back to H.264. An unsupported codec fails the whole session rather than falling back."
+                       Visibility="{Binding IsCodecNonDefault,
+                                            Converter={StaticResource BoolToVis}}"/>
+        </StackPanel>
+
+        <!-- ===== video buffer ===== -->
+        <StackPanel Style="{StaticResource GroupStyle}">
+            <TextBlock Text="Video buffer (ms)" Style="{StaticResource LabelTextStyle}"/>
+
+            <TextBox Width="140" HorizontalAlignment="Left"
+                     Text="{Binding VideoBufferText, Mode=TwoWay,
+                                    UpdateSourceTrigger=LostFocus}"/>
+
+            <TextBlock Style="{StaticResource HintStyle}"
+                       Text="Holds frames back for a moment before showing them, so that frames arriving unevenly still play at a steady pace. Raise it if the picture is jerky over wireless. It adds exactly this much delay between doing something and seeing it, so 0, meaning no buffering, is the default and is what you want over USB."/>
+
+            <TextBlock Style="{StaticResource HintStyle}"
+                       Foreground="{StaticResource AccentBrush}"
+                       Text="{Binding VideoBufferHint}"/>
+        </StackPanel>
+
+        <!-- ===== view only ===== -->
+        <StackPanel Style="{StaticResource GroupStyle}">
+            <TextBlock Text="View only" Style="{StaticResource LabelTextStyle}"/>
+
+            <ComboBox Width="210" HorizontalAlignment="Left"
+                      ItemsSource="{Binding ViewOnlyOptions}"
+                      SelectedItem="{Binding ViewOnly, Mode=TwoWay}"/>
+
+            <TextBlock Style="{StaticResource HintStyle}"
+                       Text="Watch the app without being able to touch it. Clicks, scrolling, typing and the back button are all ignored. The window still opens, still shows the app and can still be resized; it just does not pass anything on."/>
+        </StackPanel>
+
+    </StackPanel>
+</UserControl>

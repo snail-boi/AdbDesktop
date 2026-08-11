@@ -298,6 +298,211 @@ namespace AdbDesktop
     }
 
     /// <summary>
+    /// Video codecs the device server can be asked for. Spelled out rather than an enum
+    /// for the same reason <see cref="IconShapes"/> is: these strings go to the config
+    /// file and straight on to scrcpy, so an unknown one falls back instead of failing
+    /// to parse.
+    /// </summary>
+    public static class VideoCodecs
+    {
+        public const string H264 = "h264";
+        public const string H265 = "h265";
+        public const string Av1 = "av1";
+
+        public static readonly IReadOnlyList<string> All = new[] { H264, H265, Av1 };
+
+        public static bool IsKnown(string? codec) =>
+            All.Any(c => string.Equals(c, codec, StringComparison.Ordinal));
+
+        /// <summary>
+        /// What the option list shows. H.265 and AV1 need a device encoder that supports
+        /// them; when one is missing the session fails to start rather than falling back,
+        /// which is why H.264 stays the default.
+        /// </summary>
+        public static string DisplayName(string? codec) => codec switch
+        {
+            H265 => "H.265 (HEVC)",
+            Av1 => "AV1",
+            _ => "H.264",
+        };
+    }
+
+    /// <summary>
+    /// How one app's window mirrors: the scrcpy knobs a user can reasonably want to
+    /// differ per app.
+    ///
+    /// Every field is nullable, and null means "inherit". The same type is used for the
+    /// global defaults and for a per-app override, so one merge in
+    /// <see cref="Resolve"/> covers both layers: a global that leaves a field unset
+    /// falls through to the built-in default exactly as an override that leaves it unset
+    /// falls through to the global.
+    /// </summary>
+    public class DisplayOptions
+    {
+        /// <summary>Bits per second. Higher means fewer compression artifacts.</summary>
+        public int? VideoBitRate { get; set; }
+
+        /// <summary>Frames per second, or 0 for no cap.</summary>
+        public int? MaxFps { get; set; }
+
+        /// <summary>One of <see cref="VideoCodecs"/>.</summary>
+        public string? VideoCodec { get; set; }
+
+        /// <summary>
+        /// Milliseconds of frame buffering: latency traded for smoothness when the
+        /// connection is jittery. 0 skips the buffering thread entirely.
+        /// </summary>
+        public int? VideoBufferMs { get; set; }
+
+        /// <summary>
+        /// Watch without touching. Enforced host-side by dropping input rather than by
+        /// scrcpy's no-control option, which cannot be used here: the control channel is
+        /// what launches the app onto its virtual display and what resizes it, so turning
+        /// it off would leave a blank window that cannot be resized.
+        /// </summary>
+        public bool? ViewOnly { get; set; }
+
+        public const int DefaultVideoBitRate = 8_000_000;
+        public const int DefaultMaxFps = 60;
+        public const int DefaultVideoBufferMs = 0;
+
+        public const int MinVideoBitRate = 100_000;
+        public const int MaxVideoBitRate = 200_000_000;
+        public const int MaxMaxFps = 240;
+
+        /// <summary>Matches the cap the DLL applies; beyond this it is not a buffer, it is a delay.</summary>
+        public const int MaxVideoBufferMs = 5000;
+
+        /// <summary>Nothing overridden, so this entry is not worth storing.</summary>
+        public bool IsEmpty =>
+            VideoBitRate == null && MaxFps == null && VideoCodec == null
+            && VideoBufferMs == null && ViewOnly == null;
+
+        public DisplayOptions Clone() => new()
+        {
+            VideoBitRate = VideoBitRate,
+            MaxFps = MaxFps,
+            VideoCodec = VideoCodec,
+            VideoBufferMs = VideoBufferMs,
+            ViewOnly = ViewOnly,
+        };
+
+        /// <summary>
+        /// Layers an override over the defaults over the built-ins, giving the fully
+        /// resolved set a session can be opened with.
+        /// </summary>
+        public static ResolvedDisplayOptions Resolve(DisplayOptions? defaults,
+                                                     DisplayOptions? over)
+        {
+            var codec = over?.VideoCodec ?? defaults?.VideoCodec;
+
+            return new ResolvedDisplayOptions
+            {
+                VideoBitRate = Math.Clamp(
+                    over?.VideoBitRate ?? defaults?.VideoBitRate ?? DefaultVideoBitRate,
+                    MinVideoBitRate, MaxVideoBitRate),
+
+                MaxFps = Math.Clamp(
+                    over?.MaxFps ?? defaults?.MaxFps ?? DefaultMaxFps, 0, MaxMaxFps),
+
+                VideoCodec = VideoCodecs.IsKnown(codec) ? codec! : VideoCodecs.H264,
+
+                VideoBufferMs = Math.Clamp(
+                    over?.VideoBufferMs ?? defaults?.VideoBufferMs ?? DefaultVideoBufferMs,
+                    0, MaxVideoBufferMs),
+
+                ViewOnly = over?.ViewOnly ?? defaults?.ViewOnly ?? false,
+            };
+        }
+
+        /// <summary>Clamps in place and drops values that are not usable.</summary>
+        public void Normalize()
+        {
+            if (VideoBitRate is { } bitRate)
+                VideoBitRate = Math.Clamp(bitRate, MinVideoBitRate, MaxVideoBitRate);
+
+            if (MaxFps is { } fps)
+                MaxFps = Math.Clamp(fps, 0, MaxMaxFps);
+
+            if (VideoBufferMs is { } buffer)
+                VideoBufferMs = Math.Clamp(buffer, 0, MaxVideoBufferMs);
+
+            // An unknown codec inherits rather than pinning the session to a string the
+            // device will reject.
+            if (VideoCodec != null && !VideoCodecs.IsKnown(VideoCodec))
+                VideoCodec = null;
+        }
+    }
+
+    /// <summary>
+    /// <see cref="DisplayOptions"/> with every field decided. Exists so the session-open
+    /// path cannot accidentally be handed a half-resolved set.
+    /// </summary>
+    public sealed class ResolvedDisplayOptions
+    {
+        public int VideoBitRate { get; init; }
+        public int MaxFps { get; init; }
+        public string VideoCodec { get; init; } = VideoCodecs.H264;
+        public int VideoBufferMs { get; init; }
+        public bool ViewOnly { get; init; }
+    }
+
+    /// <summary>
+    /// One app's overrides, keyed the same way a window is: by app AND device, because
+    /// the same package on two phones is two independent windows and may want different
+    /// settings.
+    ///
+    /// Stored here rather than on <see cref="DesktopIcon"/> because icons live in one
+    /// file per desktop, so an app reachable from both the unified desktop and its
+    /// device's own would otherwise carry two copies that could disagree.
+    /// </summary>
+    public class AppDisplayOverride
+    {
+        public string DeviceSerial { get; set; } = string.Empty;
+        public string Package { get; set; } = string.Empty;
+        public DisplayOptions Options { get; set; } = new();
+    }
+
+    public class DisplayConfig
+    {
+        /// <summary>Used by any app without an override of its own.</summary>
+        public DisplayOptions Defaults { get; set; } = new();
+
+        public List<AppDisplayOverride> Overrides { get; set; } = new();
+
+        /// <summary>
+        /// The override for one app, or null. Serial is part of the key, so an icon whose
+        /// device is not known yet simply has no override.
+        /// </summary>
+        public DisplayOptions? FindOverride(string serial, string package) =>
+            Overrides.FirstOrDefault(o =>
+                string.Equals(o.Package, package, StringComparison.Ordinal)
+                && string.Equals(o.DeviceSerial, serial, StringComparison.Ordinal))
+            ?.Options;
+
+        /// <summary>
+        /// Stores (or replaces) an app's override. An empty one is removed instead of
+        /// stored, so "reset to defaults" leaves no trace in the file.
+        /// </summary>
+        public void SetOverride(string serial, string package, DisplayOptions? options)
+        {
+            Overrides.RemoveAll(o =>
+                string.Equals(o.Package, package, StringComparison.Ordinal)
+                && string.Equals(o.DeviceSerial, serial, StringComparison.Ordinal));
+
+            if (options == null || options.IsEmpty)
+                return;
+
+            Overrides.Add(new AppDisplayOverride
+            {
+                DeviceSerial = serial,
+                Package = package,
+                Options = options,
+            });
+        }
+    }
+
+    /// <summary>
     /// Knobs that can make things worse. Nothing here needs touching for normal use.
     /// </summary>
     public class AdvancedConfig
@@ -360,6 +565,7 @@ namespace AdbDesktop
         public DesktopConfig Desktop { get; set; } = new();
         public TaskbarConfig Taskbar { get; set; } = new();
         public IconsConfig Icons { get; set; } = new();
+        public DisplayConfig Display { get; set; } = new();
         public AdvancedConfig Advanced { get; set; } = new();
         public SessionConfig Session { get; set; } = new();
     }
@@ -419,6 +625,9 @@ namespace AdbDesktop
             config.Desktop ??= new DesktopConfig();
             config.Taskbar ??= new TaskbarConfig();
             config.Icons ??= new IconsConfig();
+            config.Display ??= new DisplayConfig();
+            config.Display.Defaults ??= new DisplayOptions();
+            config.Display.Overrides ??= new List<AppDisplayOverride>();
             config.Advanced ??= new AdvancedConfig();
             config.Session ??= new SessionConfig();
             config.Session.Windows ??= new List<WindowStateEntry>();
@@ -442,6 +651,19 @@ namespace AdbDesktop
             config.Advanced.ResizeDelayMs = Math.Clamp(config.Advanced.ResizeDelayMs,
                                                        AdvancedConfig.MinResizeDelayMs,
                                                        AdvancedConfig.MaxResizeDelayMs);
+
+            config.Display.Defaults.Normalize();
+
+            // A hand-edited file can hold an override with no app, or one whose values
+            // have all been cleared. Neither would ever be found or applied, so they
+            // are dropped rather than carried forever.
+            config.Display.Overrides.RemoveAll(o =>
+                o == null || string.IsNullOrWhiteSpace(o.Package) || o.Options == null);
+
+            foreach (var over in config.Display.Overrides)
+                over.Options.Normalize();
+
+            config.Display.Overrides.RemoveAll(o => o.Options.IsEmpty);
 
             if (!IconShapes.IsKnown(config.Icons.Shape))
                 config.Icons.Shape = IconShapes.Squircle;

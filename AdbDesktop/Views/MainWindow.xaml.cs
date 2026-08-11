@@ -335,7 +335,7 @@ namespace AdbDesktop
         private bool IsOverlayOpen =>
             _vm.IsSearchOpen || _vm.IsConnectionOpen || _vm.IsConfirmOpen
             || _vm.IsNoticeOpen || _vm.IsIconPickerOpen || _vm.IsBusy
-            || _vm.IsWelcomeOpen;
+            || _vm.IsWelcomeOpen || _vm.IsAppDisplayOptionsOpen;
 
         /// <summary>The focused app window, overlays permitting.</summary>
         private AppWindowViewModel? FocusedWindow() =>

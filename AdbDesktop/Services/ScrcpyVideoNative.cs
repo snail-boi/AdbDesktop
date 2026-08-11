@@ -56,6 +56,13 @@ namespace AdbDesktop
             [MarshalAs(UnmanagedType.LPStr)] public string? VideoCodecOptions;
 
             public uint VideoBitRate;
+
+            /// <summary>
+            /// Milliseconds of decoded-frame buffering. 0 bypasses the regulator
+            /// entirely rather than inserting a zero-delay one.
+            /// </summary>
+            public uint VideoBuffer;
+
             [MarshalAs(UnmanagedType.LPStr)] public string? MaxFps;
             public ushort MaxSize;
             [MarshalAs(UnmanagedType.LPStr)] public string? Crop;

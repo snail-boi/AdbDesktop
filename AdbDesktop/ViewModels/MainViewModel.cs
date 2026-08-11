@@ -38,6 +38,7 @@ namespace AdbDesktop
         private TaskCompletionSource<DeviceInfo?>? _chooseTcs;
 
         private IconPickerViewModel? _iconPicker;
+        private AppDisplayOptionsViewModel? _appDisplayOptions;
         private TaskCompletionSource<BitmapSource?>? _pickTcs;
 
         public DesktopViewModel Desktop { get; } = new();
@@ -78,6 +79,7 @@ namespace AdbDesktop
         public RelayCommand<DesktopIconViewModel> RenameIconCommand { get; }
         public RelayCommand<DesktopIconViewModel> ChangeIconCommand { get; }
         public RelayCommand<DesktopIconViewModel> ResetIconCommand { get; }
+        public RelayCommand<DesktopIconViewModel> MirroringOptionsCommand { get; }
 
         public MainViewModel()
         {
@@ -110,6 +112,7 @@ namespace AdbDesktop
                 var settings = new SettingsViewModel(Desktop, Taskbar);
                 settings.IconSettingsChanged += OnIconSettingsChanged;
                 settings.WelcomeRequested += ShowWelcome;
+                settings.RefreshAllWindows = WindowManager.RestartAllMirroring;
                 return settings;
             };
 
@@ -144,6 +147,8 @@ namespace AdbDesktop
             AddAppCommand = new RelayCommand<AppEntry>(app => _ = AddAppAsync(app));
             RemoveIconCommand = new RelayCommand<DesktopIconViewModel>(RemoveIcon);
             RenameIconCommand = new RelayCommand<DesktopIconViewModel>(RenameIcon);
+            MirroringOptionsCommand =
+                new RelayCommand<DesktopIconViewModel>(ShowMirroringOptions);
             ChangeIconCommand = new RelayCommand<DesktopIconViewModel>(icon => _ = ChangeIconAsync(icon));
             ResetIconCommand = new RelayCommand<DesktopIconViewModel>(ResetIcon);
 
@@ -463,6 +468,7 @@ namespace AdbDesktop
             if (IsWelcomeOpen) { CloseWelcome(); return true; }
             if (IsNoticeOpen) { IsNoticeOpen = false; return true; }
             if (IsIconPickerOpen) { ResolvePick(null); return true; }
+            if (IsAppDisplayOptionsOpen) { CloseMirroringOptions(); return true; }
             if (IsConfirmOpen) { ResolveConfirm(false); return true; }
             if (IsChooseDeviceOpen) { ResolveChoice(null); return true; }
             if (Notifications.IsPanelOpen) { Notifications.IsPanelOpen = false; return true; }
@@ -1116,6 +1122,65 @@ namespace AdbDesktop
                 Desktop.Remove(icon);
         }
 
+        // ---------- per-app mirroring options ----------
+
+        public AppDisplayOptionsViewModel? AppDisplayOptions
+        {
+            get => _appDisplayOptions;
+            private set
+            {
+                if (Set(ref _appDisplayOptions, value))
+                    RaisePropertyChanged(nameof(IsAppDisplayOptionsOpen));
+            }
+        }
+
+        public bool IsAppDisplayOptionsOpen => _appDisplayOptions != null;
+
+        /// <summary>
+        /// Per-app mirroring settings, from the icon's context menu.
+        ///
+        /// Not offered for the built-in Settings app: its window shows WPF content rather
+        /// than a mirrored display, so there is no session for any of this to apply to.
+        /// </summary>
+        private void ShowMirroringOptions(DesktopIconViewModel? icon)
+        {
+            if (icon == null || icon.IsBuiltIn)
+                return;
+
+            CloseMirroringOptions();   // supersede anything already showing
+
+            // Only offer to reopen when there is a window to reopen. Captured here rather
+            // than looked up on click so the dialog cannot act on a window that closed
+            // while it was open.
+            var open = WindowManager.Windows.FirstOrDefault(
+                w => w.Package == icon.Package && w.DeviceSerial == icon.DeviceSerial);
+
+            // Restarted in place rather than closed and reopened: the window keeps its
+            // position, size and place in the stack, and only the session behind it is
+            // replaced.
+            Action? reopen = open == null
+                ? null
+                : () => WindowManager.RestartMirroring(open);
+
+            var vm = new AppDisplayOptionsViewModel(
+                icon.Caption, icon.Package, icon.DeviceSerial, reopen);
+
+            vm.Finished += OnMirroringOptionsFinished;
+            AppDisplayOptions = vm;
+        }
+
+        private void OnMirroringOptionsFinished(bool saved) => CloseMirroringOptions();
+
+        private void CloseMirroringOptions()
+        {
+            if (AppDisplayOptions == null)
+                return;
+
+            AppDisplayOptions.Finished -= OnMirroringOptionsFinished;
+            AppDisplayOptions.Detach();
+            AppDisplayOptions = null;
+        }
+
         /// <summary>
         /// Flips the icon into in-place edit mode. The surface handles focus, selection
         /// and commit -- there is no dialog.
@@ -1138,7 +1203,8 @@ namespace AdbDesktop
         private void OnIconActivated(DesktopIconViewModel icon)
         {
             // An overlay is up: treat the click as dismissing it rather than launching.
-            if (IsBusy || IsConfirmOpen || IsNoticeOpen || IsIconPickerOpen || IsChooseDeviceOpen)
+            if (IsBusy || IsConfirmOpen || IsNoticeOpen || IsIconPickerOpen
+                || IsChooseDeviceOpen || IsAppDisplayOptionsOpen)
                 return;
 
             // The icon outlives its device, so it can be clicked while there is nothing to

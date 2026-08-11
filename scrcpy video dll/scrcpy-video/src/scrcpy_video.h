@@ -96,6 +96,15 @@ struct scv_settings {
     const char *video_codec_options;
 
     uint32_t video_bit_rate;    /* 0 = 8000000 */
+
+    /*
+     * Milliseconds to hold decoded frames before handing them on, trading
+     * latency for smoothness against network jitter. 0 (the default) bypasses
+     * the regulator entirely rather than inserting a zero-delay one, so that
+     * the buffering thread only exists when it has something to do.
+     */
+    uint32_t video_buffer;
+
     const char *max_fps;        /* float parsed by the server, e.g. "60" */
     uint16_t max_size;          /* 0 = unlimited */
     const char *crop;

@@ -1031,6 +1031,79 @@
             </Border>
         </Grid>
 
+        <!-- ================= per-app mirroring options ================= -->
+        <Grid Background="#B0000000"
+              Visibility="{Binding IsAppDisplayOptionsOpen, Converter={StaticResource BoolToVis}}">
+            <Border Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                    CornerRadius="12"
+                    Width="520" MaxHeight="640"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="30" ShadowDepth="6" Opacity="0.6" Color="Black"/>
+                </Border.Effect>
+
+                <DockPanel DataContext="{Binding AppDisplayOptions}" Margin="24,20">
+
+                    <!-- Pinned: the option list scrolls, the buttons must not scroll away. -->
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,16,0,0">
+
+                        <!--
+                          Only when this app actually has a window up. None of these
+                          settings can be pushed into a live session, because they are
+                          fixed when the phone builds the display and starts its
+                          encoder, so reopening is the only way to see the change now.
+                        -->
+                        <Border Background="{StaticResource SurfaceHighBrush}"
+                                BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                                CornerRadius="8" Padding="12,10" Margin="0,0,0,12"
+                                Visibility="{Binding IsWindowOpen,
+                                                     Converter={StaticResource BoolToVis}}">
+                            <TextBlock FontSize="11" TextWrapping="Wrap"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       Text="This app is open. Saving on its own will not change the window already on the desktop. Save and refresh reconnects it now, in place: the window stays where it is and the app reloads."/>
+                        </Border>
+
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="Use the defaults"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Padding="14,7" Margin="0,0,8,0"
+                                    ToolTip="Clear every setting below, so this app follows the Mirroring page in Settings"
+                                    Command="{Binding UseDefaultsCommand}"/>
+                            <Button Content="Cancel"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Padding="14,7" Margin="0,0,8,0"
+                                    Command="{Binding CancelCommand}"/>
+                            <Button Content="Save and refresh"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Padding="14,7" Margin="0,0,8,0"
+                                    Command="{Binding SaveAndRefreshCommand}"
+                                    Visibility="{Binding IsWindowOpen,
+                                                         Converter={StaticResource BoolToVis}}"/>
+                            <Button Content="Save"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    Padding="14,7"
+                                    Command="{Binding SaveCommand}"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
+                        <TextBlock Text="Mirroring options" FontSize="15"/>
+                        <TextBlock Text="{Binding AppName}" FontSize="12.5" Margin="0,4,0,0"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{StaticResource AccentBrush}"/>
+                        <TextBlock Text="{Binding ScopeText}" FontSize="11" Margin="0,8,0,0"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource MutedTextBrush}"/>
+                    </StackPanel>
+
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
+                        <local:DisplayOptionsEditor DataContext="{Binding Editor}"/>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+
         <!-- ================= inline confirm ================= -->
         <Grid Background="#B0000000"
               Visibility="{Binding IsConfirmOpen, Converter={StaticResource BoolToVis}}">

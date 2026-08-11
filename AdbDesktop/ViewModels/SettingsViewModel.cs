@@ -50,6 +50,7 @@ namespace AdbDesktop
             else
                 _hasChecked = true;
             ShowWelcomeCommand = new RelayCommand(() => WelcomeRequested?.Invoke());
+            RefreshWindowsCommand = new RelayCommand(RefreshWindows);
         }
 
         // ---------- first-run guide ----------
@@ -257,6 +258,64 @@ namespace AdbDesktop
         public int MinResizeDelayMs => AdvancedConfig.MinResizeDelayMs;
         public int MaxResizeDelayMs => AdvancedConfig.MaxResizeDelayMs;
 
+        // ---------- mirroring ----------
+
+        /// <summary>
+        /// The global defaults, edited through the shared options editor.
+        ///
+        /// "Default (x)" here means the built-in value rather than another layer, which is
+        /// why the inherited set is Resolve(null, null): an empty field on this page has
+        /// nothing further to fall back to.
+        /// </summary>
+        public DisplayOptionsViewModel Display { get; } = CreateDisplayEditor();
+
+        private static DisplayOptionsViewModel CreateDisplayEditor()
+        {
+            var vm = new DisplayOptionsViewModel(App.Config.Display.Defaults,
+                                                 DisplayOptions.Resolve(null, null));
+            vm.Changed += App.SaveConfig;
+            return vm;
+        }
+
+        /// <summary>
+        /// Restarts every open window's session, returning how many were restarted.
+        /// Supplied by the shell, which owns the windows. A settable delegate rather
+        /// than a reference to the window manager, matching TransportResolver and
+        /// SettingsFactory.
+        /// </summary>
+        public Func<int>? RefreshAllWindows { get; set; }
+
+        public RelayCommand RefreshWindowsCommand { get; }
+
+        /// <summary>What the refresh button did, shown beside it until something else changes.</summary>
+        public string RefreshMessage { get; private set; } = string.Empty;
+
+        public bool HasRefreshMessage => !string.IsNullOrEmpty(RefreshMessage);
+
+        private void RefreshWindows()
+        {
+            var count = RefreshAllWindows?.Invoke() ?? 0;
+
+            RefreshMessage = count switch
+            {
+                0 => "No windows to refresh.",
+                1 => "Refreshed 1 window.",
+                _ => $"Refreshed {count} windows.",
+            };
+
+            RaisePropertyChanged(nameof(RefreshMessage));
+            RaisePropertyChanged(nameof(HasRefreshMessage));
+        }
+
+        /// <summary>Count of apps with settings of their own, for the note on the page.</summary>
+        public int OverrideCount => App.Config.Display.Overrides.Count;
+
+        public bool HasOverrides => OverrideCount > 0;
+
+        public string OverrideSummary => OverrideCount == 1
+            ? "1 app has its own settings, which override everything on this page."
+            : $"{OverrideCount} apps have their own settings, which override everything on this page.";
+
         // ---------- advanced: diagnostic logging ----------
 
         /// <summary>
@@ -296,7 +355,7 @@ namespace AdbDesktop
         // ---------- tabs ----------
 
         public IReadOnlyList<string> Tabs { get; } =
-            new[] { "General", "Taskbar", "Icons", "Other", "Advanced" };
+            new[] { "General", "Taskbar", "Icons", "Mirroring", "Other", "Advanced" };
 
         public int TabIndex
         {
@@ -309,6 +368,7 @@ namespace AdbDesktop
                 RaisePropertyChanged(nameof(IsGeneral));
                 RaisePropertyChanged(nameof(IsTaskbar));
                 RaisePropertyChanged(nameof(IsIcons));
+                RaisePropertyChanged(nameof(IsMirroring));
                 RaisePropertyChanged(nameof(IsOther));
                 RaisePropertyChanged(nameof(IsAdvanced));
             }
@@ -317,8 +377,9 @@ namespace AdbDesktop
         public bool IsGeneral => _tabIndex == 0;
         public bool IsTaskbar => _tabIndex == 1;
         public bool IsIcons => _tabIndex == 2;
-        public bool IsOther => _tabIndex == 3;
-        public bool IsAdvanced => _tabIndex == 4;
+        public bool IsMirroring => _tabIndex == 3;
+        public bool IsOther => _tabIndex == 4;
+        public bool IsAdvanced => _tabIndex == 5;
 
         private void SelectTab(string? index)
         {

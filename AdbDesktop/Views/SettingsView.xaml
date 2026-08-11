@@ -1,4 +1,4 @@
-<UserControl x:Class="AdbDesktop.SettingsView"
+﻿<UserControl x:Class="AdbDesktop.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:AdbDesktop">
@@ -99,12 +99,15 @@
                 <RadioButton Style="{StaticResource SettingsTabStyle}" Content="Icons"
                              IsChecked="{Binding IsIcons, Mode=OneWay}"
                              Command="{Binding SelectTabCommand}" CommandParameter="2"/>
+                <RadioButton Style="{StaticResource SettingsTabStyle}" Content="Mirroring"
+                             IsChecked="{Binding IsMirroring, Mode=OneWay}"
+                             Command="{Binding SelectTabCommand}" CommandParameter="3"/>
                 <RadioButton Style="{StaticResource SettingsTabStyle}" Content="Other"
                              IsChecked="{Binding IsOther, Mode=OneWay}"
-                             Command="{Binding SelectTabCommand}" CommandParameter="3"/>
+                             Command="{Binding SelectTabCommand}" CommandParameter="4"/>
                 <RadioButton Style="{StaticResource SettingsTabStyle}" Content="Advanced"
                              IsChecked="{Binding IsAdvanced, Mode=OneWay}"
-                             Command="{Binding SelectTabCommand}" CommandParameter="4"/>
+                             Command="{Binding SelectTabCommand}" CommandParameter="5"/>
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -284,6 +287,62 @@
                                Foreground="{StaticResource AccentBrush}"
                                Text="Each device is underlined in its own colour in the connection panel, so you can see which colour is which."
                                Visibility="{Binding IsColourMarker, Converter={StaticResource BoolToVis}}"/>
+                </StackPanel>
+
+                <!-- ===== other ===== -->
+                <!-- ===== mirroring ===== -->
+                <StackPanel Visibility="{Binding IsMirroring, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="Mirroring defaults" Style="{StaticResource SectionHeadingStyle}"/>
+
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="0,0,0,16"
+                               Text="How app windows mirror, unless an app has been given settings of its own. To change one app, right-click its icon on the desktop and choose Mirroring options."/>
+
+                    <!--
+                      Nothing here reaches a window that is already open: every one of
+                      these is fixed when the phone creates the display and starts its
+                      encoder. Said once at the top rather than repeated per option.
+                    -->
+                    <Border Background="{StaticResource SurfaceHighBrush}"
+                            BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                            CornerRadius="8" Padding="12,10" Margin="0,0,0,18">
+                        <TextBlock FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   Text="Changes apply the next time an app is opened. Windows already on the desktop keep the settings they started with. Use Refresh all windows below to move them over."/>
+                    </Border>
+
+                    <local:DisplayOptionsEditor DataContext="{Binding Display}"/>
+
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="0,22,0,0"
+                               Foreground="{StaticResource AccentBrush}"
+                               Text="{Binding OverrideSummary}"
+                               Visibility="{Binding HasOverrides, Converter={StaticResource BoolToVis}}"/>
+
+                    <!--
+                      The way to apply everything above without closing each app by hand.
+                      At the bottom because it acts on the whole page rather than on any
+                      one setting.
+                    -->
+                    <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0"
+                            Margin="0,24,0,0" Padding="0,18,0,0">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Refresh all windows"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Padding="14,7"
+                                        ToolTip="Restart every open window's connection so these settings take effect now"
+                                        Command="{Binding RefreshWindowsCommand}"/>
+
+                                <TextBlock Text="{Binding RefreshMessage}" FontSize="11.5"
+                                           Margin="12,0,0,0" VerticalAlignment="Center"
+                                           Foreground="{StaticResource AccentBrush}"
+                                           Visibility="{Binding HasRefreshMessage,
+                                                                Converter={StaticResource BoolToVis}}"/>
+                            </StackPanel>
+
+                            <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="0,8,0,0"
+                                       Text="Reconnects every app window with its current settings. The windows stay where they are, at the size they are, in the order they are; only the connection behind each one is replaced. Each app reloads, so anything unsaved inside one is lost."/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <!-- ===== other ===== -->

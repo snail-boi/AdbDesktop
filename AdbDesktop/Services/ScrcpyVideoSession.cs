@@ -55,7 +55,8 @@ namespace AdbDesktop
         /// Starts a session on a new Android virtual display of the given size, and
         /// launches an app onto it.
         /// </summary>
-        public bool Open(string serial, string package, int width, int height, int dpi = 220)
+        public bool Open(string serial, string package, int width, int height,
+                         ResolvedDisplayOptions options, int dpi = 220)
         {
             ScrcpyVideoNative.Initialize();
 
@@ -83,7 +84,16 @@ namespace AdbDesktop
             settings.Serial = string.IsNullOrWhiteSpace(serial) ? null : serial;
             settings.AdbPath = AppPaths.AdbPath;
             settings.ServerPath = ScrcpyVideoNative.ServerPath;
-            settings.MaxFps = "60";
+
+            settings.VideoBitRate = (uint) options.VideoBitRate;
+            settings.VideoCodec = options.VideoCodec;
+            settings.VideoBuffer = (uint) options.VideoBufferMs;
+
+            // Null rather than "0": the server parses this as a float and has no
+            // "unlimited" spelling, so no cap means not sending the parameter at all.
+            settings.MaxFps = options.MaxFps > 0
+                ? options.MaxFps.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : null;
 
             // A virtual display per window is what allows several apps side by side,
             // independent of what the phone screen is showing.
@@ -94,7 +104,11 @@ namespace AdbDesktop
             // title bar is the chrome, and the app should fill the rest.
             settings.VdSystemDecorations = 0;
 
-            // Control is required both to launch the app and to resize the display.
+            // Control is required both to launch the app and to resize the display, so it
+            // is always on, including for a view-only window. Do not be tempted to wire
+            // scrcpy's no-control option here: without the control channel the app never
+            // reaches its virtual display and the window cannot be resized. View-only is
+            // enforced by dropping input host-side, in AppWindowViewModel.
             settings.Control = 1;
             settings.FlexDisplay = 1;
 

@@ -216,6 +216,12 @@ namespace AdbDesktop
         private WriteableBitmap? _frame;
         private string _status = "Connecting...";
 
+        /// <summary>
+        /// The settings this window's session was opened with. Null until it starts, and
+        /// deliberately not refreshed afterwards. See StartMirroring.
+        /// </summary>
+        private ResolvedDisplayOptions? _options;
+
         /// <summary>The live video surface, or null before the first frame.</summary>
         public WriteableBitmap? Frame
         {
@@ -253,11 +259,22 @@ namespace AdbDesktop
             if (_session != null)
                 return;
 
+            // Resolved once, at open. Every one of these settings is baked into the
+            // virtual display or the encoder, so none of them can change under a live
+            // session. Re-reading them later would only produce a view model that
+            // disagrees with the stream it is showing.
+            _options = DisplayOptions.Resolve(
+                App.Config.Display.Defaults,
+                App.Config.Display.FindOverride(serial, Package));
+
+            RaisePropertyChanged(nameof(IsViewOnly));
+
             var session = new ScrcpyVideoSession();
             session.FrameSurfaceChanged += bmp => Frame = bmp;
             session.SessionEvent += OnSessionEvent;
 
-            if (!session.Open(serial, Package, (int) ContentWidth, (int) ContentHeight))
+            if (!session.Open(serial, Package, (int) ContentWidth, (int) ContentHeight,
+                              _options))
             {
                 Status = "Could not start mirroring - see the log.";
                 RaiseSettled();
@@ -332,21 +349,64 @@ namespace AdbDesktop
 
         // ---------- input forwarding ----------
 
-        /// <summary>True once there is a live session to send input to.</summary>
-        public bool CanReceiveInput => _session is { IsOpen: true };
+        /// <summary>
+        /// True once there is a live session that will act on input.
+        ///
+        /// A view-only window reports false, so callers that ask before doing work (such
+        /// as setting a cursor or taking focus for typing) treat it the same as a window
+        /// with no session yet, which is what it behaves like from the user's side.
+        /// </summary>
+        public bool CanReceiveInput => _session is { IsOpen: true } && !IsViewOnly;
 
-        public void SendTouch(int action, double nx, double ny, uint buttons) =>
+        /// <summary>
+        /// Watch without touching. This is what the settings call "View only"; scrcpy's
+        /// own no-control option cannot be used for it here (see ScrcpyVideoSession.Open).
+        ///
+        /// Every Send* below checks it rather than relying on callers: input arrives from
+        /// several places (the video surface, the taskbar nav buttons, keyboard focus),
+        /// and one that forgot to ask would silently defeat the setting.
+        /// </summary>
+        public bool IsViewOnly => _options?.ViewOnly ?? false;
+
+        public void SendTouch(int action, double nx, double ny, uint buttons)
+        {
+            if (IsViewOnly)
+                return;
+
             _session?.Touch(action, nx, ny, buttons);
+        }
 
-        public void SendScroll(double nx, double ny, double hscroll, double vscroll) =>
+        public void SendScroll(double nx, double ny, double hscroll, double vscroll)
+        {
+            if (IsViewOnly)
+                return;
+
             _session?.Scroll(nx, ny, hscroll, vscroll);
+        }
 
-        public void SendKey(int action, int keycode, uint metastate) =>
+        public void SendKey(int action, int keycode, uint metastate)
+        {
+            if (IsViewOnly)
+                return;
+
             _session?.Key(action, keycode, metastate);
+        }
 
-        public void SendText(string text) => _session?.Text(text);
+        public void SendText(string text)
+        {
+            if (IsViewOnly)
+                return;
 
-        public void SendBack(int action) => _session?.Back(action);
+            _session?.Text(text);
+        }
+
+        public void SendBack(int action)
+        {
+            if (IsViewOnly)
+                return;
+
+            _session?.Back(action);
+        }
 
         public void StopMirroring()
         {

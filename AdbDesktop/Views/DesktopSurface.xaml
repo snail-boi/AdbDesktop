@@ -86,6 +86,19 @@
                             </MenuItem>
 
                             <!--
+                              Per-app mirroring settings. Hidden for AdbDesktop's own
+                              entries: the Settings window draws WPF content rather than
+                              a mirrored display, so there is no session for any of it
+                              to apply to. IsRemovable already means "not built in".
+                            -->
+                            <Separator Visibility="{Binding IsRemovable, Converter={StaticResource BoolToVis}}"/>
+                            <MenuItem Header="Mirroring options..."
+                                      Visibility="{Binding IsRemovable, Converter={StaticResource BoolToVis}}"
+                                      Command="{Binding PlacementTarget.Tag.MirroringOptionsCommand,
+                                                        RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                      CommandParameter="{Binding}"/>
+
+                            <!--
                               Which device runs it. The same app on two phones is two
                               icons with the same name, so this is how they are told
                               apart until the user renames one.

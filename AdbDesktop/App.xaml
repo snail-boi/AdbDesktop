@@ -221,6 +221,15 @@
                 </Setter>
             </Style>
 
+            <!--
+              Implicit, so a plain <TextBox> is dark like a plain <ComboBox> or
+              <TextBlock> already is. Without this the stock white WPF box shows through
+              anywhere a style was not named explicitly, which is what it did on the
+              resize-delay field. Boxes that set their own style (search, inline rename)
+              are unaffected: an explicit Style wins outright and does not merge.
+            -->
+            <Style TargetType="TextBox" BasedOn="{StaticResource DialogTextBoxStyle}"/>
+
             <!-- ============ list ============ -->
             <Style x:Key="DarkListBoxStyle" TargetType="ListBox">
                 <Setter Property="Background" Value="Transparent"/>

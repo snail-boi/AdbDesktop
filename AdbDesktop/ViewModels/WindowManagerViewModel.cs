@@ -240,6 +240,48 @@ namespace AdbDesktop
         }
 
         /// <summary>
+        /// Drops one window's session and starts a fresh one, keeping the window itself.
+        ///
+        /// This is how a mirroring setting is applied to something already on screen:
+        /// bit rate, codec, frame rate and the rest are all fixed when the phone builds
+        /// the display and starts its encoder, so the session has to be replaced. Closing
+        /// and reopening the window would do it too, but would lose its position, size and
+        /// place in the stack.
+        ///
+        /// Returns false when there is nothing to restart: the Settings window has no
+        /// session, and neither does a window whose device is no longer reachable.
+        /// </summary>
+        public bool RestartMirroring(AppWindowViewModel window)
+        {
+            if (window.IsSettings)
+                return false;
+
+            var transport = TransportResolver?.Invoke(window.DeviceSerial)
+                            ?? window.DeviceSerial;
+
+            if (string.IsNullOrEmpty(transport))
+                return false;
+
+            window.StopMirroring();
+            QueueMirroringStart(window, transport);
+            return true;
+        }
+
+        /// <summary>
+        /// Restarts every open window's session, so a change to the mirroring defaults
+        /// reaches the desktop without the user closing and reopening each app by hand.
+        ///
+        /// Returns how many were restarted, which is what the button reports back.
+        /// "Nothing happened" and "nothing was open" look identical otherwise.
+        /// </summary>
+        public int RestartAllMirroring()
+        {
+            // Materialised first: the starts are queued rather than run inline, but the
+            // collection is still being read while windows are stopped.
+            return Windows.ToList().Count(RestartMirroring);
+        }
+
+        /// <summary>
         /// Closes every window mirroring a device. Used when the device is removed from
         /// AdbDesktop, where a window would otherwise outlive the desktop it came from.
         /// </summary>

@@ -43,6 +43,8 @@
 #include "util/net.h"
 #include "util/rand.h"
 #include "util/thread.h"
+#include "util/tick.h"
+#include "video_regulator.h"
 
 /* ------------------------------------------------------------------ */
 /* session                                                            */
@@ -59,6 +61,16 @@ struct scv_session {
     struct sc_decoder decoder;
     struct scv_video_sink sink;
     struct sc_controller controller;
+
+    /*
+     * Optional, and only spliced into the frame chain when video_buffer is
+     * non-zero. sc_video_regulator_init() documents the delay as strictly
+     * positive, and a zero-delay regulator would be a thread and a queue doing
+     * nothing but copying frames.
+     */
+    struct sc_video_regulator regulator;
+    bool regulator_enabled;
+    uint32_t video_buffer;
 
     /*
      * Owned copies of every string in the settings. The caller's buffers may be
@@ -491,7 +503,28 @@ scv_on_connected(struct sc_server *server, void *userdata) {
 
     sc_packet_source_add_sink(&s->demuxer.packet_source,
                               &s->decoder.packet_sink);
-    sc_frame_source_add_sink(&s->decoder.frame_source, &s->sink.frame_sink);
+
+    /*
+     * decoder -> [regulator] -> sink.
+     *
+     * The regulator needs no explicit start/stop here: its thread is created by
+     * its frame_sink open op and joined by the close op, both of which the
+     * decoder drives through the frame source chain. Tearing down the demuxer
+     * in scv_close() therefore joins the buffering thread too.
+     */
+    if (s->regulator_enabled) {
+        sc_video_regulator_init(&s->regulator,
+                                SC_TICK_FROM_MS(s->video_buffer),
+                                // Show something immediately rather than making
+                                // the window sit blank for the buffer duration.
+                                true);
+        sc_frame_source_add_sink(&s->decoder.frame_source,
+                                 &s->regulator.frame_sink);
+        sc_frame_source_add_sink(&s->regulator.frame_source,
+                                 &s->sink.frame_sink);
+    } else {
+        sc_frame_source_add_sink(&s->decoder.frame_source, &s->sink.frame_sink);
+    }
 
     if (!sc_demuxer_start(&s->demuxer)) {
         LOGE("Could not start video demuxer");
@@ -605,6 +638,13 @@ scv_open(const struct scv_settings *settings, int32_t *error) {
     s->src_format = AV_PIX_FMT_NONE;
     s->control_enabled = settings->control != 0;
 
+    // Capped rather than rejected: a buffer this long is already well past
+    // useful, and failing to open a session over it would be worse than
+    // quietly clamping.
+    s->video_buffer = settings->video_buffer > 5000 ? 5000
+                                                    : settings->video_buffer;
+    s->regulator_enabled = s->video_buffer > 0;
+
     if (!scv_dup(&s->serial, settings->serial)
             || !scv_dup(&s->adb_path, settings->adb_path)
             || !scv_dup(&s->server_path, settings->server_path)
@@ -677,6 +717,13 @@ scv_open(const struct scv_settings *settings, int32_t *error) {
         // Audio is deliberately off: it is device-wide on Android, so it does
         // not belong to a per-window session. It ships as its own DLL.
         .audio = false,
+        /*
+         * Deliberately not exposed. The device server sets it through
+         * Settings.System, which drives touch feedback on the phone's own
+         * screen; nothing is drawn on a virtual display, so the option was all
+         * cost and no effect for the way AdbDesktop uses scrcpy.
+         */
+        .show_touches = false,
         .control = settings->control != 0,
         // Upstream refuses flex without new_display (cli.c), so mirror that
         // rather than letting the device reject the connection.
@@ -724,11 +771,14 @@ scv_open(const struct scv_settings *settings, int32_t *error) {
     };
 
     LOGI("Session: new_display=%s control=%d flex=%d orientation_lock=%d "
-         "vd_decorations=%d",
+         "vd_decorations=%d bit_rate=%u max_fps=%s codec=%s buffer=%ums",
          s->new_display ? s->new_display : "(mirror)",
          (int) params.control, (int) params.flex_display,
          (int) params.capture_orientation_lock,
-         (int) params.vd_system_decorations);
+         (int) params.vd_system_decorations,
+         params.video_bit_rate, s->max_fps ? s->max_fps : "(default)",
+         settings->video_codec ? settings->video_codec : "h264",
+         s->video_buffer);
 
     if (!sc_server_init(&s->server, &params, &server_cbs, s)) {
         err = SCV_ERR_INIT;
