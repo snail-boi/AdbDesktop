@@ -37,6 +37,16 @@ namespace AdbDesktop
         private bool _renderHooked;
         private bool _disposed;
 
+        /// <summary>
+        /// The size last asked of the device, so an incoming frame can be checked against
+        /// it. The device does not have to honour the request: encoders round dimensions
+        /// to suit themselves, and downsize_on_error lets the server retry smaller after a
+        /// failure. Either way the frame is then stretched to fill the window, which is
+        /// visible as softness with nothing on screen to explain it.
+        /// </summary>
+        private int _requestedWidth;
+        private int _requestedHeight;
+
         /// <summary>Raised on the UI thread when the bitmap instance is replaced.</summary>
         public event Action<WriteableBitmap?>? FrameSurfaceChanged;
 
@@ -71,6 +81,9 @@ namespace AdbDesktop
 
             width = Math.Max(96, width);
             height = Math.Max(96, height);
+
+            _requestedWidth = width;
+            _requestedHeight = height;
 
             var settings = new ScrcpyVideoNative.Settings();
             ScrcpyVideoNative.scv_settings_init(ref settings);
@@ -132,7 +145,11 @@ namespace AdbDesktop
                 return false;
             }
 
-            Debugger.show($"[SCRCPY] Session opened for {package} at {width}x{height}.");
+            // The size is in real pixels, so the scaling is worth printing beside it:
+            // at anything other than 100% it is the difference between this and the
+            // window's own size, and that gap used to be pure blur.
+            Debugger.show($"[SCRCPY] Session opened for {package} at {width}x{height} " +
+                          $"(display scaling {DisplayScale.Current:P0}).");
 
             Package = package;
             HookRendering();
@@ -163,6 +180,9 @@ namespace AdbDesktop
 
             width = Math.Clamp(width, 96, ushort.MaxValue);
             height = Math.Clamp(height, 96, ushort.MaxValue);
+
+            _requestedWidth = width;
+            _requestedHeight = height;
 
             ScrcpyVideoNative.scv_resize_display(_session, (ushort)width, (ushort)height);
         }
@@ -270,6 +290,17 @@ namespace AdbDesktop
                     _bitmap = new WriteableBitmap(_bitmapWidth, _bitmapHeight, 96, 96,
                                                   PixelFormats.Bgra32, null);
                     FrameSurfaceChanged?.Invoke(_bitmap);
+
+                    // Only when the size changes, so this cannot spam per frame. A
+                    // mismatch means the picture is being stretched to fill the window,
+                    // and is the first thing to check when a window looks soft.
+                    if (_bitmapWidth != _requestedWidth || _bitmapHeight != _requestedHeight)
+                    {
+                        Debugger.show(
+                            $"[SCRCPY] {Package}: asked for {_requestedWidth}x{_requestedHeight}, " +
+                            $"device is sending {_bitmapWidth}x{_bitmapHeight}. " +
+                            "The frame will be stretched to fit.");
+                    }
                 }
 
                 _bitmap.WritePixels(

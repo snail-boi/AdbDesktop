@@ -5,6 +5,30 @@
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <local:ColourToBrushConverter x:Key="ColourToBrush"/>
+
+        <!-- One window-border colour. Square, so it reads as a colour and not a button. -->
+        <Style x:Key="ColourSwatchStyle" TargetType="Button">
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" CornerRadius="5" BorderThickness="1"
+                                BorderBrush="{StaticResource LineBrush}"
+                                Background="{Binding Converter={StaticResource ColourToBrush}}"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush"
+                                        Value="{StaticResource TextBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
         <!--
           Tab buttons rather than a TabControl: the stock one brings its own light
@@ -166,6 +190,52 @@
                                Foreground="{StaticResource OnlineBrush}"
                                Visibility="{Binding HasAppliedMessage,
                                                     Converter={StaticResource BoolToVis}}"/>
+
+                    <!-- ===== window border ===== -->
+                    <TextBlock Text="Window border" Style="{StaticResource SectionHeadingStyle}"
+                               Margin="0,26,0,10"/>
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="0,0,0,12"
+                               Text="The outline round the app window you are working in, which is how you tell it from the ones behind it. Windows you are not using keep the plain grey outline, and a maximised window has no border at all."/>
+
+                    <ItemsControl ItemsSource="{Binding BorderColourPresets}" Margin="0,0,0,14">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource ColourSwatchStyle}"
+                                        ToolTip="{Binding}"
+                                        Command="{Binding DataContext.PickBorderColourCommand,
+                                                          RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                        CommandParameter="{Binding}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <StackPanel Orientation="Horizontal">
+                        <!--
+                          Shows the colour actually in use, whether it came from a swatch
+                          or the box. DynamicResource, so it follows the change the same
+                          way the windows behind this one do.
+                        -->
+                        <Border Width="32" Height="30" CornerRadius="6" Margin="0,0,8,0"
+                                BorderThickness="1" BorderBrush="{StaticResource LineBrush}"
+                                Background="{DynamicResource WindowBorderBrush}"/>
+
+                        <TextBox Width="120" VerticalContentAlignment="Center"
+                                 Text="{Binding WindowBorderColour, Mode=TwoWay,
+                                                UpdateSourceTrigger=LostFocus}"/>
+
+                        <Button Content="Reset" Style="{StaticResource SecondaryButtonStyle}"
+                                Padding="14,7" Margin="8,0,0,0"
+                                IsEnabled="{Binding IsCustomBorderColour}"
+                                Command="{Binding ResetBorderColourCommand}"/>
+                    </StackPanel>
+
+                    <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="0,6,0,0"
+                               Text="Any hex value, as #RRGGBB. Applies to every window immediately, including the ones already open."/>
                 </StackPanel>
 
                 <!-- ===== taskbar ===== -->
@@ -349,11 +419,11 @@
                 <StackPanel Visibility="{Binding IsOther, Converter={StaticResource BoolToVis}}">
                     <TextBlock Text="Getting started" Style="{StaticResource SectionHeadingStyle}"/>
                     <TextBlock Style="{StaticResource EmptyTabStyle}" Margin="0,0,0,12"
-                               Text="The guide that opens the first time adbDesktop runs: connecting a phone over USB or wireless debugging, adding it to the desktop, and what putting an app on the desktop actually does."/>
-                    <Button Content="Show the welcome guide"
+                               Text="The guided tour that runs the first time adbDesktop opens: adding a device, what the connection panel's parts do, where added devices show up, and how search works. This replays the tour only, not the Windows or App desktop choice from first launch."/>
+                    <Button Content="Replay the tour"
                             Style="{StaticResource SecondaryButtonStyle}"
                             Padding="14,7" HorizontalAlignment="Left"
-                            Command="{Binding ShowWelcomeCommand}"/>
+                            Command="{Binding ShowTourCommand}"/>
 
                     <TextBlock Text="When adbDesktop reopens"
                                Style="{StaticResource SectionHeadingStyle}" Margin="0,22,0,10"/>

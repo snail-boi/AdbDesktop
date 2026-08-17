@@ -503,6 +503,22 @@ namespace AdbDesktop
     }
 
     /// <summary>
+    /// How the shell draws the app windows themselves. Global rather than per desktop,
+    /// for the same reason the taskbar and the icons are: a window keeps its look when it
+    /// is moved between desktops, so the frame cannot belong to one of them.
+    /// </summary>
+    public class WindowsConfig
+    {
+        /// <summary>
+        /// The frame round the focused window, as "#RRGGBB". Empty means the accent blue,
+        /// which is what it was before this was settable. Unfocused windows are not
+        /// affected: their outline is the same dim line as the rest of the chrome, and
+        /// colouring it too would defeat the point of colouring the focused one.
+        /// </summary>
+        public string BorderColour { get; set; } = string.Empty;
+    }
+
+    /// <summary>
     /// Knobs that can make things worse. Nothing here needs touching for normal use.
     /// </summary>
     public class AdvancedConfig
@@ -550,21 +566,22 @@ namespace AdbDesktop
     public class AdbDesktopConfig
     {
         /// <summary>
-        /// The first-run guide has been through once. Top level rather than inside one of
-        /// the sections below, because it is about the app as a whole rather than about
-        /// devices, desktops or chrome -- and a fresh config file being all-defaults is
-        /// exactly what "first run" means.
+        /// The first-run desktop choice and guided tour have been through once. Top level
+        /// rather than inside one of the sections below, because it is about the app as a
+        /// whole rather than about devices, desktops or chrome -- and a fresh config file
+        /// being all-defaults is exactly what "first run" means.
         ///
-        /// Set when the guide is closed however it is closed, so backing out of it does
+        /// Set when the tour is closed however it is closed, so backing out of it does
         /// not bring it back on the next launch. Settings can reopen it on demand.
         /// </summary>
-        public bool WelcomeSeen { get; set; }
+        public bool OnboardingComplete { get; set; }
 
         public PathsConfig Paths { get; set; } = new();
         public DeviceConfig Device { get; set; } = new();
         public DesktopConfig Desktop { get; set; } = new();
         public TaskbarConfig Taskbar { get; set; } = new();
         public IconsConfig Icons { get; set; } = new();
+        public WindowsConfig Windows { get; set; } = new();
         public DisplayConfig Display { get; set; } = new();
         public AdvancedConfig Advanced { get; set; } = new();
         public SessionConfig Session { get; set; } = new();
@@ -625,6 +642,7 @@ namespace AdbDesktop
             config.Desktop ??= new DesktopConfig();
             config.Taskbar ??= new TaskbarConfig();
             config.Icons ??= new IconsConfig();
+            config.Windows ??= new WindowsConfig();
             config.Display ??= new DisplayConfig();
             config.Display.Defaults ??= new DisplayOptions();
             config.Display.Overrides ??= new List<AppDisplayOverride>();
@@ -670,6 +688,12 @@ namespace AdbDesktop
 
             if (!DeviceMarkers.IsKnown(config.Icons.DeviceMarker))
                 config.Icons.DeviceMarker = DeviceMarkers.None;
+
+            // Anything unreadable becomes empty, which is "use the default" rather than a
+            // window with an invisible frame. Also rewrites a colour name or an
+            // "#AARRGGBB" into the "#RRGGBB" the settings page shows.
+            config.Windows.BorderColour = Theme.Normalise(config.Windows.BorderColour)
+                                          ?? string.Empty;
 
             if (string.IsNullOrWhiteSpace(config.Taskbar.TimeFormat))
                 config.Taskbar.TimeFormat = "t";

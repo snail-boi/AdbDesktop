@@ -49,19 +49,23 @@ namespace AdbDesktop
                 _ = CheckForUpdatesAsync();
             else
                 _hasChecked = true;
-            ShowWelcomeCommand = new RelayCommand(() => WelcomeRequested?.Invoke());
+            ShowTourCommand = new RelayCommand(() => TourRequested?.Invoke());
             RefreshWindowsCommand = new RelayCommand(RefreshWindows);
+            PickBorderColourCommand = new RelayCommand<string>(c => WindowBorderColour = c ?? string.Empty);
+            ResetBorderColourCommand = new RelayCommand(() => WindowBorderColour = string.Empty);
         }
 
-        // ---------- first-run guide ----------
+        // ---------- first-run tour ----------
 
         /// <summary>
-        /// Asks for the welcome guide again. The shell owns it -- it is drawn over the
+        /// Asks for the guided tour again. The shell owns it -- it is drawn over the
         /// whole desktop, not inside this window -- so this only raises the request.
+        /// This replays the in-shell tour only, not the Windows/App desktop choice,
+        /// which only ever makes sense before the shell exists.
         /// </summary>
-        public event Action? WelcomeRequested;
+        public event Action? TourRequested;
 
-        public RelayCommand ShowWelcomeCommand { get; }
+        public RelayCommand ShowTourCommand { get; }
 
         // ---------- update ----------
 
@@ -467,6 +471,54 @@ namespace AdbDesktop
             RaisePropertyChanged(nameof(WallpaperPath));
             RaisePropertyChanged(nameof(WallpaperFit));
         }
+
+        // ---------- general: window border ----------
+
+        /// <summary>The swatches on the page. Typing a hex value covers everything else.</summary>
+        public IReadOnlyList<string> BorderColourPresets => Theme.WindowBorderPresets;
+
+        public RelayCommand<string> PickBorderColourCommand { get; }
+        public RelayCommand ResetBorderColourCommand { get; }
+
+        /// <summary>
+        /// The focused window's frame colour, as "#RRGGBB".
+        ///
+        /// Backed by the config and applied straight away, like the taskbar and icon
+        /// settings: the windows are on screen behind this one, so the change is its own
+        /// preview and there is nothing to apply or revert.
+        /// </summary>
+        public string WindowBorderColour
+        {
+            get => Theme.WindowBorderColour;
+            set
+            {
+                // Empty is the reset button rather than a colour: back to the default.
+                var stored = string.IsNullOrWhiteSpace(value)
+                    ? string.Empty
+                    : Theme.Normalise(value);
+
+                // Null means it was not a colour at all. Nothing is stored, and the
+                // RaisePropertyChanged below puts the box back to what is in use.
+                if (stored != null &&
+                    !string.Equals(stored, App.Config.Windows.BorderColour, StringComparison.Ordinal))
+                {
+                    App.Config.Windows.BorderColour = stored;
+                    App.SaveConfig();
+
+                    // Repaints every open window, not just the ones opened next.
+                    Theme.Apply();
+                }
+
+                // Raised even when nothing changed, so a typo snaps the box back to the
+                // colour actually in use instead of sitting there looking accepted.
+                RaisePropertyChanged(nameof(WindowBorderColour));
+                RaisePropertyChanged(nameof(IsCustomBorderColour));
+            }
+        }
+
+        /// <summary>Drives the reset button, which has nothing to do otherwise.</summary>
+        public bool IsCustomBorderColour =>
+            !string.IsNullOrEmpty(App.Config.Windows.BorderColour);
 
         // ---------- icons ----------
 

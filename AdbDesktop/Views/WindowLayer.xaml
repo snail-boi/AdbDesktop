@@ -104,10 +104,24 @@
 
         <ItemsControl.ItemTemplate>
             <DataTemplate>
+                <!--
+                  UseLayoutRounding so the content area starts and ends on whole device
+                  pixels. Positions and sizes come from drag operations in WPF units, and
+                  at anything other than 100% display scaling one of those is not a whole
+                  device pixel. Left fractional, the video area is a fractional number of
+                  real pixels and Stretch=Fill resamples the frame to reach it, which is
+                  the same softness the border inset used to cause.
+
+                  BorderThickness comes from AppWindowViewModel.FrameBorderThickness,
+                  which is also what gets subtracted to size the virtual display. Bound
+                  rather than set here so the two cannot disagree; hard-coding a thickness
+                  brings the blur straight back.
+                -->
                 <Border x:Name="Frame"
                         Background="{StaticResource SurfaceBrush}"
-                        BorderThickness="1"
+                        BorderThickness="{Binding FrameBorderThickness}"
                         CornerRadius="8"
+                        UseLayoutRounding="True"
                         PreviewMouseDown="Window_PreviewMouseDown">
 
                     <Grid>
@@ -418,9 +432,15 @@
                         <Style TargetType="Border">
                             <!--
                               Focus is signalled three ways at once, because a 1px border
-                              alone was too easy to miss: an accent border, a heavier
+                              alone was too easy to miss: a coloured border, a heavier
                               drop shadow, and (in the title bar above) a brighter
                               background with bolder text.
+
+                              The colour is a DynamicResource because Settings can change
+                              it; a static one would only reach windows opened afterwards.
+                              Nothing is needed here for a maximised window: it is drawn
+                              with no border at all (FrameBorderThickness), so whatever
+                              this brush is has nothing to paint.
                             -->
                             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
                             <Setter Property="Effect">
@@ -431,8 +451,7 @@
                             </Setter>
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
-                                    <Setter Property="BorderThickness" Value="1.5"/>
+                                    <Setter Property="BorderBrush" Value="{DynamicResource WindowBorderBrush}"/>
                                     <Setter Property="Effect">
                                         <Setter.Value>
                                             <DropShadowEffect BlurRadius="28" ShadowDepth="6"

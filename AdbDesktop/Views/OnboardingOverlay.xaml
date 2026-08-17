@@ -1,0 +1,81 @@
+<UserControl x:Class="AdbDesktop.OnboardingOverlay"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:AdbDesktop">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis"/>
+    </UserControl.Resources>
+
+    <!--
+      DimLayer's Data is rebuilt in code-behind (OnboardingOverlay.xaml.cs) every time
+      the step changes: a full-size rectangle for the final card, or the same rectangle
+      with an even-odd "hole" cut over whichever real control the current step points
+      at. Stretch="None" so those absolute pixel coordinates render literally instead
+      of being rescaled to fit the Path's layout slot.
+    -->
+    <Grid ClipToBounds="True">
+        <Path x:Name="DimLayer" Fill="#B0000000" Stretch="None"/>
+
+        <!--
+          The per-step callout: heading, body, Skip/Next. Positioned in code-behind
+          next to the current spotlight hole, via Canvas.Left/Top rather than Margin
+          plus alignment: unambiguous absolute placement, with no interaction between
+          the Border's own explicit Width and whatever HorizontalAlignment happens to
+          be in effect. Hidden on the final step, which uses FinalCard instead. The
+          Canvas otherwise plays no layout role, it just fills the Grid cell so
+          Callout has the same coordinate space DimLayer's hole is computed in.
+        -->
+        <Canvas>
+            <Border x:Name="Callout"
+                    Width="320" Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="10"
+                    Visibility="{Binding Current.IsFinal, Converter={StaticResource InverseBoolToVis}}">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="24" ShadowDepth="4" Opacity="0.55" Color="Black"/>
+                </Border.Effect>
+                <StackPanel Margin="16,14">
+                    <TextBlock Text="{Binding Current.Heading}" FontSize="14"/>
+                    <TextBlock Text="{Binding Current.Body}" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,0"
+                               LineHeight="17" LineStackingStrategy="BlockLineHeight"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                        <Button Content="Skip tour" Style="{StaticResource SecondaryButtonStyle}"
+                                Padding="14,7" Command="{Binding SkipCommand}"
+                                Visibility="{Binding ShowSkipButton, Converter={StaticResource BoolToVis}}"/>
+                        <Button Content="Next" Style="{StaticResource PrimaryButtonStyle}"
+                                Padding="14,7" Margin="8,0,0,0" Command="{Binding NextCommand}"
+                                Visibility="{Binding ShowNextButton, Converter={StaticResource BoolToVis}}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Canvas>
+
+        <!-- The closing wrap-up card. No spotlight, so it is simply centered. -->
+        <Border x:Name="FinalCard" HorizontalAlignment="Center" VerticalAlignment="Center"
+                Width="420" Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="12"
+                Visibility="{Binding Current.IsFinal, Converter={StaticResource BoolToVis}}">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="30" ShadowDepth="6" Opacity="0.6" Color="Black"/>
+            </Border.Effect>
+            <StackPanel Margin="24,20">
+                <TextBlock Text="{Binding Current.Heading}" FontSize="18"/>
+                <TextBlock Text="{Binding Current.Body}" FontSize="12.5" TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,0"
+                           LineHeight="18" LineStackingStrategy="BlockLineHeight"/>
+                <TextBlock Text="Not implemented yet." FontSize="12" Margin="0,12,0,0"
+                           Foreground="{StaticResource AccentBrush}"
+                           Visibility="{Binding IsHelpWipVisible, Converter={StaticResource BoolToVis}}"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+                    <Button Content="Help me set up a device and apps"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Padding="14,7" Margin="0,0,8,0" Command="{Binding HelpSetupCommand}"/>
+                    <Button Content="Close" Style="{StaticResource PrimaryButtonStyle}"
+                            Padding="14,7" Command="{Binding CloseCommand}"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

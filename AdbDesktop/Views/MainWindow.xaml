@@ -210,7 +210,8 @@
                                 Panel.ZIndex="5">
 
                         <!-- collapsed form: the same target, minus the 360px of bar -->
-                        <Button Style="{StaticResource NavButtonStyle}" Width="34" Height="30"
+                        <Button x:Name="SearchIconButton"
+                                Style="{StaticResource NavButtonStyle}" Width="34" Height="30"
                                 ToolTip="Search apps"
                                 Command="{Binding ToggleSearchCommand}"
                                 Visibility="{Binding Taskbar.SearchIconOnly,
@@ -220,7 +221,8 @@
                                        VerticalAlignment="Center" Text="&#xE721;"/>
                         </Button>
 
-                        <Border Width="360" Height="30"
+                        <Border x:Name="SearchBarExpanded"
+                                Width="360" Height="30"
                                 CornerRadius="15"
                                 Background="{StaticResource SurfaceHighBrush}"
                                 BorderBrush="{StaticResource LineBrush}"
@@ -303,6 +305,14 @@
                           so a second phone simply adds another bundle rather than needing
                           anywhere in the taskbar to become a chooser.
                         -->
+                        <!--
+                          Wraps the per-device bundles and the "No device" placeholder,
+                          which are already mutually exclusive in practice (the
+                          ItemsControl is zero-width when empty). Named only so the
+                          onboarding tour has a single element to spotlight here,
+                          whichever of the two is actually showing.
+                        -->
+                        <Grid x:Name="DeviceArea">
                         <ItemsControl ItemsSource="{Binding Devices}" VerticalAlignment="Center">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -559,13 +569,15 @@
                                    Foreground="{StaticResource MutedTextBrush}"
                                    Visibility="{Binding HasDevices,
                                                         Converter={StaticResource InverseBoolToVis}}"/>
+                        </Grid>
 
                         <!--
                           Pairing / adding. This replaced the old connection pill: with a
                           bundle per device there is nothing left for a pill to name, so it
                           slims down to the button that opens the connection panel.
                         -->
-                        <Button Style="{StaticResource NavButtonStyle}" Width="34" Height="30"
+                        <Button x:Name="AddDeviceButton"
+                                Style="{StaticResource NavButtonStyle}" Width="34" Height="30"
                                 Margin="2,0,0,0"
                                 ToolTip="Add or pair a device"
                                 Command="{Binding ToggleConnectionCommand}">
@@ -1012,7 +1024,7 @@
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="24" ShadowDepth="4" Opacity="0.55" Color="Black"/>
                 </Border.Effect>
-                <local:ConnectionPanel DataContext="{Binding Connection}"/>
+                <local:ConnectionPanel x:Name="ConnectionPanelHost" DataContext="{Binding Connection}"/>
             </Border>
         </Grid>
 
@@ -1239,21 +1251,12 @@
         </Grid>
 
         <!--
-          ================= first-run guide =================
+          ================= first-run tour =================
           Last of the overlays, so it sits over anything else that might be up, but still
           under the window controls: closing the app has to stay reachable.
         -->
-        <Grid Background="#B0000000"
-              Visibility="{Binding IsWelcomeOpen, Converter={StaticResource BoolToVis}}">
-            <Border Background="{StaticResource SurfaceBrush}"
-                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
-                    CornerRadius="12" Width="660"
-                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                <Border.Effect>
-                    <DropShadowEffect BlurRadius="30" ShadowDepth="6" Opacity="0.6" Color="Black"/>
-                </Border.Effect>
-                <local:WelcomePanel DataContext="{Binding Welcome}"/>
-            </Border>
+        <Grid Visibility="{Binding IsTourOpen, Converter={StaticResource BoolToVis}}">
+            <local:OnboardingOverlay x:Name="Tour" DataContext="{Binding Tour}"/>
         </Grid>
 
         <!--

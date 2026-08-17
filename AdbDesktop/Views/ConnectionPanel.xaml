@@ -40,7 +40,8 @@
                            Visibility="{Binding IsDeviceListVisible, Converter={StaticResource BoolToVis}}"/>
             </StackPanel>
 
-            <Button HorizontalAlignment="Right" VerticalAlignment="Top"
+            <Button x:Name="CloseButton"
+                    HorizontalAlignment="Right" VerticalAlignment="Top"
                     Style="{StaticResource NavButtonStyle}"
                     Width="30" Height="26"
                     FontFamily="Segoe MDL2 Assets" FontSize="10" Content="&#xE8BB;"
@@ -56,7 +57,7 @@
             <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
 
                 <TextBlock Text="Wireless mode" Style="{StaticResource LabelTextStyle}"/>
-                <ComboBox SelectedIndex="{Binding ModeIndex}" Margin="0,0,0,8">
+                <ComboBox x:Name="WirelessModeCombo" SelectedIndex="{Binding ModeIndex}" Margin="0,0,0,8">
                     <ComboBoxItem Content="Wireless debugging (Android 11+)"/>
                     <ComboBoxItem Content="TCP/IP (legacy adb tcpip)"/>
                     <ComboBoxItem Content="USB only"/>
@@ -66,7 +67,7 @@
                            Foreground="{StaticResource MutedTextBrush}"
                            TextWrapping="Wrap" Margin="0,0,0,10"/>
 
-                <StackPanel Orientation="Horizontal">
+                <StackPanel x:Name="PairButtonsPanel" Orientation="Horizontal">
                     <Button Content="Pair over Wi-Fi" Style="{StaticResource SecondaryButtonStyle}"
                             Margin="0,0,8,0" Padding="14,7"
                             Command="{Binding StartPairCommand}"/>
@@ -83,7 +84,8 @@
             </StackPanel>
 
             <Grid>
-                <ListBox Style="{StaticResource DarkListBoxStyle}"
+                <ListBox x:Name="DeviceListBox"
+                         Style="{StaticResource DarkListBoxStyle}"
                          ItemContainerStyle="{StaticResource DarkListItemStyle}"
                          ItemsSource="{Binding Devices}"
                          MaxHeight="210">

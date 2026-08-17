@@ -1,0 +1,88 @@
+<Window x:Class="AdbDesktop.DesktopChoiceWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="adbDesktop"
+        Background="{StaticResource DesktopBrush}"
+        Foreground="{StaticResource TextBrush}"
+        FontFamily="Segoe UI"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        ShowInTaskbar="True"
+        Topmost="False"
+        Width="480"
+        SizeToContent="Height">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <!--
+          A big clickable card rather than a plain button, since this is the only
+          decision the window asks and it should read as two clear options, not a
+          form. Left-aligned content (heading + description), unlike the app's other
+          button styles which center a single line.
+        -->
+        <Style x:Key="ChoiceCardStyle" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource SurfaceHighBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Padding" Value="16,14"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverBrush}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border Margin="18" Background="{StaticResource SurfaceBrush}"
+            BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="10">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="30" ShadowDepth="6" Opacity="0.6" Color="Black"/>
+        </Border.Effect>
+
+        <StackPanel Margin="24,22">
+            <TextBlock Text="How do you want to use this PC?" FontSize="19"/>
+            <TextBlock Text="Pick one to continue. This only shows once." FontSize="12"
+                       Foreground="{StaticResource MutedTextBrush}"
+                       TextWrapping="Wrap" Margin="0,8,0,20"/>
+
+            <Button Style="{StaticResource ChoiceCardStyle}" Margin="0,0,0,10"
+                    Command="{Binding ChooseWindowsDesktopCommand}">
+                <StackPanel>
+                    <TextBlock Text="Windows desktop" FontSize="14"/>
+                    <TextBlock Text="Not available yet." FontSize="11.5"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               TextWrapping="Wrap" Margin="0,4,0,0"/>
+                </StackPanel>
+            </Button>
+
+            <Button Style="{StaticResource ChoiceCardStyle}"
+                    Command="{Binding ChooseAppDesktopCommand}">
+                <StackPanel>
+                    <TextBlock Text="App desktop" FontSize="14"/>
+                    <TextBlock Text="Your phone's apps, opened as windows on this PC."
+                               FontSize="11.5" Foreground="{StaticResource MutedTextBrush}"
+                               TextWrapping="Wrap" Margin="0,4,0,0"/>
+                </StackPanel>
+            </Button>
+
+            <TextBlock Text="{Binding WindowsWipMessage}"
+                       Foreground="{StaticResource AccentBrush}"
+                       FontSize="12" TextWrapping="Wrap" Margin="0,16,0,0"
+                       Visibility="{Binding IsWindowsWipVisible, Converter={StaticResource BoolToVis}}"/>
+        </StackPanel>
+    </Border>
+</Window>

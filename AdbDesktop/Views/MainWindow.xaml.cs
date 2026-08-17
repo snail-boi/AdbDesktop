@@ -125,10 +125,74 @@ namespace AdbDesktop
                     OnImmersiveChanged();
             };
 
+            // Virtual displays are sized in real pixels, so the shell has to know what
+            // this monitor's scaling is. Read here rather than in the constructor: the
+            // HWND has to exist before there is a monitor to read it from.
+            DisplayScale.Track(this);
+            DisplayScale.Changed += OnDisplayScaleChanged;
+
+            // Before Start(), which may show the tour immediately on a fresh config.
+            Tour.TargetResolver = ResolveOnboardingTarget;
+
             _vm.Start();
         }
 
-        private void OnClosed(object? sender, EventArgs e) => _vm.Dispose();
+        /// <summary>
+        /// Maps a tour step's target to the real element it should spotlight. The one
+        /// place that needs to know about every named control the tour can point at.
+        /// </summary>
+        private FrameworkElement? ResolveOnboardingTarget(OnboardingTarget target) => target switch
+        {
+            OnboardingTarget.AddDeviceButton => AddDeviceButton,
+            OnboardingTarget.DeviceList => ConnectionPanelHost.DeviceListBox,
+            OnboardingTarget.WirelessModeCombo => ConnectionPanelHost.WirelessModeCombo,
+            OnboardingTarget.PairButtons => ConnectionPanelHost.PairButtonsPanel,
+            OnboardingTarget.ConnectionCloseButton => ConnectionPanelHost.CloseButton,
+            OnboardingTarget.DeviceArea => DeviceArea,
+            OnboardingTarget.SearchButton =>
+                _vm.Taskbar.SearchIconOnly ? SearchIconButton : SearchBarExpanded,
+            OnboardingTarget.SettingsIcon => ResolveSettingsIconElement(),
+            _ => null,
+        };
+
+        /// <summary>
+        /// The Settings tile is a desktop icon like any other, so it is found by identity
+        /// (the built-in settings package id) rather than by position -- this works
+        /// wherever the icon actually is, dragged or not.
+        /// </summary>
+        private FrameworkElement? ResolveSettingsIconElement()
+        {
+            var iconVm = _vm.Desktop.Icons.FirstOrDefault(
+                i => i.Package == BuiltInApps.SettingsPackage);
+
+            return iconVm == null
+                ? null
+                : Surface.Host.ItemContainerGenerator.ContainerFromItem(iconVm) as FrameworkElement;
+        }
+
+        /// <summary>
+        /// Dragged to a monitor with different scaling. The windows have not changed size
+        /// in layout terms, but the real pixels behind them have, so each display is
+        /// re-sized to match.
+        /// </summary>
+        private void OnDisplayScaleChanged()
+        {
+            foreach (var window in _vm.WindowManager.Windows)
+                window.OnDisplayScaleChanged();
+        }
+
+        private void OnClosed(object? sender, EventArgs e)
+        {
+            // DisplayScale.Changed is static, so leaving this attached would keep the
+            // window alive for the life of the process.
+            DisplayScale.Changed -= OnDisplayScaleChanged;
+            _vm.Dispose();
+
+            // ShutdownMode is OnExplicitShutdown (App.xaml), since startup now has to
+            // decide between the desktop-choice window and this one. Nothing else ends
+            // the process once this, the only remaining window, closes.
+            Application.Current.Shutdown();
+        }
 
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
@@ -335,7 +399,7 @@ namespace AdbDesktop
         private bool IsOverlayOpen =>
             _vm.IsSearchOpen || _vm.IsConnectionOpen || _vm.IsConfirmOpen
             || _vm.IsNoticeOpen || _vm.IsIconPickerOpen || _vm.IsBusy
-            || _vm.IsWelcomeOpen || _vm.IsAppDisplayOptionsOpen;
+            || _vm.IsTourOpen || _vm.IsAppDisplayOptionsOpen;
 
         /// <summary>The focused app window, overlays permitting.</summary>
         private AppWindowViewModel? FocusedWindow() =>

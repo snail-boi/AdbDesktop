@@ -97,16 +97,40 @@ namespace AdbDesktop
             }
         }
 
+        /// <summary>The frame a floating window is drawn with, in WPF units.</summary>
+        public const double FloatingFrameBorder = 1;
+
         /// <summary>
-        /// Size of the area below the title bar. This is what the Android virtual display
-        /// will be created at, and what a flex display resizes to.
+        /// This window's border, in WPF units. Subtracted below because it is part of
+        /// Width and Height but not part of the area the video is drawn in.
+        ///
+        /// Zero while maximised: a maximised window covers the whole desktop, so an
+        /// outline round it has nothing to separate it from and only draws a line across
+        /// the screen.
+        ///
+        /// The window Border binds <see cref="FrameBorderThickness"/> rather than setting
+        /// a thickness of its own, so the two cannot drift apart. Getting them out of step
+        /// is not a cosmetic couple of pixels: the frame is drawn with Stretch=Fill, so
+        /// any mismatch resamples the whole image, and with a small one the sampling phase
+        /// drifts across the picture. That reads as a soft, slightly-out-of-focus window
+        /// rather than as a wrong size, which is why it survived for so long.
         /// </summary>
-        public double ContentWidth => Math.Max(1, _width);
+        public double FrameBorder => _isMaximized ? 0 : FloatingFrameBorder;
+
+        /// <summary>What the window Border binds. See <see cref="FrameBorder"/>.</summary>
+        public Thickness FrameBorderThickness => new(FrameBorder);
+
+        /// <summary>
+        /// Size of the area the mirrored display is actually drawn in. This is what the
+        /// Android virtual display is created at, and what a flex display resizes to.
+        /// </summary>
+        public double ContentWidth => Math.Max(1, _width - 2 * FrameBorder);
 
         // Maximised windows give the whole height to the app: the title bar floats over
         // it rather than occupying a row.
         public double ContentHeight =>
-            Math.Max(1, _isMaximized ? _height : _height - TitleBarHeight);
+            Math.Max(1, (_isMaximized ? _height : _height - TitleBarHeight)
+                        - 2 * FrameBorder);
 
         /// <summary>
         /// Pre-formatted for display. Exists because binding a Run to ContentWidth
@@ -176,6 +200,7 @@ namespace AdbDesktop
                     IsChromeRevealed = false;
 
                 RaisePropertyChanged(nameof(TitleBarRow));
+                RaisePropertyChanged(nameof(FrameBorderThickness));
                 RaiseContentSizeChanged();
             }
         }
@@ -273,7 +298,12 @@ namespace AdbDesktop
             session.FrameSurfaceChanged += bmp => Frame = bmp;
             session.SessionEvent += OnSessionEvent;
 
-            if (!session.Open(serial, Package, (int) ContentWidth, (int) ContentHeight,
+            // Physical pixels, not DIPs: the display is created at the size the user
+            // actually looks at, so the frames map onto the window one for one instead of
+            // being stretched up. See DisplayScale.
+            if (!session.Open(serial, Package,
+                              DisplayScale.ToPixels(ContentWidth),
+                              DisplayScale.ToPixels(ContentHeight),
                               _options))
             {
                 Status = "Could not start mirroring - see the log.";
@@ -344,8 +374,17 @@ namespace AdbDesktop
         private void OnResizeDebounceTick(object? sender, EventArgs e)
         {
             _resizeDebounce?.Stop();
-            _session?.Resize((int) ContentWidth, (int) ContentHeight);
+            _session?.Resize(DisplayScale.ToPixels(ContentWidth),
+                             DisplayScale.ToPixels(ContentHeight));
         }
+
+        /// <summary>
+        /// Re-sends the display size after the window moves to a monitor with different
+        /// scaling. The window has not changed size in DIPs, so nothing else notices, but
+        /// the number of real pixels behind it has changed and the display has to follow
+        /// or the stretch comes straight back.
+        /// </summary>
+        public void OnDisplayScaleChanged() => ScheduleDisplayResize();
 
         // ---------- input forwarding ----------
 

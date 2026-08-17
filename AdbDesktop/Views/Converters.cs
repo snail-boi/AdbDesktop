@@ -58,6 +58,22 @@ namespace AdbDesktop
     }
 
     /// <summary>
+    /// A colour string to a brush, for the window-border swatches. Anything unreadable
+    /// comes back transparent rather than throwing: the swatch list is data like any
+    /// other, and a bad entry should show as a gap, not take the page down.
+    /// </summary>
+    public sealed class ColourToBrushConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+            Theme.TryParseColour(value as string, out var colour)
+                ? new System.Windows.Media.SolidColorBrush(colour)
+                : System.Windows.Media.Brushes.Transparent;
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+            throw new NotSupportedException();
+    }
+
+    /// <summary>
     /// Visible when the string is empty. Pass ConverterParameter="invert" for the
     /// opposite, which is how the status line hides itself when there is nothing to say.
     /// </summary>
